@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { ThemeProvider } from 'next-themes';
 import { AppProvider } from '../contexts/AppContext';
 import { UndoProvider } from '../contexts/UndoContext';
 import { SearchBar } from '../components/SearchBar';
@@ -34,11 +35,18 @@ function AppContent() {
 
 const Index = () => {
   return (
-    <UndoProvider>
-      <AppProvider>
-        <AppContent />
-      </AppProvider>
-    </UndoProvider>
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+      disableTransitionOnChange
+    >
+      <UndoProvider>
+        <AppProvider>
+          <AppContent />
+        </AppProvider>
+      </UndoProvider>
+    </ThemeProvider>
   );
 };
 

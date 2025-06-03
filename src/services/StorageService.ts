@@ -1,4 +1,3 @@
-
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 
 export interface RecurrencePattern {
@@ -69,6 +68,30 @@ class StorageService {
     return projects.filter(project => !project.archived);
   }
 
+  async getArchivedProjects(): Promise<Project[]> {
+    if (!this.db) await this.init();
+    const projects = await this.db!.getAll('projects');
+    return projects.filter(project => project.archived);
+  }
+
+  async archiveProject(id: string): Promise<void> {
+    if (!this.db) await this.init();
+    const project = await this.getProject(id);
+    if (project) {
+      project.archived = true;
+      await this.saveProject(project);
+    }
+  }
+
+  async restoreProject(id: string): Promise<void> {
+    if (!this.db) await this.init();
+    const project = await this.db!.get('projects', id);
+    if (project) {
+      project.archived = false;
+      await this.saveProject(project);
+    }
+  }
+
   async getProject(id: string): Promise<Project | undefined> {
     if (!this.db) await this.init();
     return this.db!.get('projects', id);
@@ -94,6 +117,30 @@ class StorageService {
     if (!this.db) await this.init();
     const tasks = await this.db!.getAllFromIndex('tasks', 'by-project', projectId);
     return tasks.filter(task => !task.archived);
+  }
+
+  async getArchivedTasks(): Promise<Task[]> {
+    if (!this.db) await this.init();
+    const tasks = await this.db!.getAll('tasks');
+    return tasks.filter(task => task.archived);
+  }
+
+  async archiveTask(id: string): Promise<void> {
+    if (!this.db) await this.init();
+    const task = await this.db!.get('tasks', id);
+    if (task) {
+      task.archived = true;
+      await this.saveTask(task);
+    }
+  }
+
+  async restoreTask(id: string): Promise<void> {
+    if (!this.db) await this.init();
+    const task = await this.db!.get('tasks', id);
+    if (task) {
+      task.archived = false;
+      await this.saveTask(task);
+    }
   }
 
   async getTasksByQuadrant(projectId: string, quadrant: Task['quadrant']): Promise<Task[]> {
