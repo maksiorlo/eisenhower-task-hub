@@ -89,10 +89,9 @@ interface AppContextType {
     loadTasks: (projectId: string) => Promise<void>;
     searchTasks: (query: string) => Promise<void>;
     moveTaskToProject: (taskId: string, targetProjectId: string) => Promise<void>;
+    createRecurringTask: (originalTask: Task) => Promise<void>;
   };
 }
-
-const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
@@ -220,6 +219,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (error) {
         handleError(error as Error, 'moving task');
+      }
+    },
+
+    createRecurringTask: async (originalTask: Task) => {
+      try {
+        const newTask = await storageService.createRecurringTask(originalTask);
+        if (state.currentProject?.id === newTask.projectId) {
+          dispatch({ type: 'ADD_TASK', payload: newTask });
+        }
+      } catch (error) {
+        handleError(error as Error, 'creating recurring task');
       }
     },
   };

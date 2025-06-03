@@ -1,22 +1,33 @@
 
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 
+export interface RecurrencePattern {
+  type: 'daily' | 'weekly' | 'weekdays' | 'weekends' | 'custom';
+  interval?: number; // for every X days
+  daysOfWeek?: number[]; // 0-6, Sunday = 0
+}
+
 export interface Task {
   id: string;
   title: string;
   description?: string;
   deadline?: string;
+  deadlineTime?: string; // HH:MM format
   createdAt: string;
   completed: boolean;
   quadrant: 'urgent-important' | 'important-not-urgent' | 'urgent-not-important' | 'not-urgent-not-important';
   projectId: string;
   order?: number;
+  isRecurring?: boolean;
+  recurrencePattern?: RecurrencePattern;
+  archived?: boolean;
 }
 
 export interface Project {
   id: string;
   name: string;
   createdAt: string;
+  archived?: boolean;
 }
 
 interface TaskMatrixDB extends DBSchema {
@@ -35,22 +46,27 @@ class StorageService {
   private db: IDBPDatabase<TaskMatrixDB> | null = null;
 
   async init(): Promise<void> {
-    this.db = await openDB<TaskMatrixDB>('TaskMatrixDB', 1, {
-      upgrade(db) {
+    this.db = await openDB<TaskMatrixDB>('TaskMatrixDB', 2, {
+      upgrade(db, oldVersion) {
         // Create projects store
-        db.createObjectStore('projects', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('projects')) {
+          db.createObjectStore('projects', { keyPath: 'id' });
+        }
 
         // Create tasks store with indexes
-        const tasksStore = db.createObjectStore('tasks', { keyPath: 'id' });
-        tasksStore.createIndex('by-project', 'projectId');
-        tasksStore.createIndex('by-quadrant', ['projectId', 'quadrant']);
+        if (!db.objectStoreNames.contains('tasks')) {
+          const tasksStore = db.createObjectStore('tasks', { keyPath: 'id' });
+          tasksStore.createIndex('by-project', 'projectId');
+          tasksStore.createIndex('by-quadrant', ['projectId', 'quadrant']);
+        }
       },
     });
   }
 
   async getAllProjects(): Promise<Project[]> {
     if (!this.db) await this.init();
-    return this.db!.getAll('projects');
+    const projects = await this.db!.getAll('projects');
+    return projects.filter(project => !project.archived);
   }
 
   async getProject(id: string): Promise<Project | undefined> {
@@ -76,7 +92,8 @@ class StorageService {
 
   async getTasksByProject(projectId: string): Promise<Task[]> {
     if (!this.db) await this.init();
-    return this.db!.getAllFromIndex('tasks', 'by-project', projectId);
+    const tasks = await this.db!.getAllFromIndex('tasks', 'by-project', projectId);
+    return tasks.filter(task => !task.archived);
   }
 
   async getTasksByQuadrant(projectId: string, quadrant: Task['quadrant']): Promise<Task[]> {
@@ -111,11 +128,70 @@ class StorageService {
       ? await this.getTasksByProject(projectId)
       : await this.db!.getAll('tasks');
     
-    const lowerQuery = query.toLowerCase();
+    const lowerQuery = query.toLowerCase().trim().replace(/\s+/g, ' ');
     return allTasks.filter(task => 
-      task.title.toLowerCase().includes(lowerQuery) ||
-      task.description?.toLowerCase().includes(lowerQuery)
+      !task.archived && (
+        task.title.toLowerCase().includes(lowerQuery) ||
+        task.description?.toLowerCase().includes(lowerQuery)
+      )
     );
+  }
+
+  async createRecurringTask(originalTask: Task): Promise<Task> {
+    if (!originalTask.isRecurring || !originalTask.recurrencePattern) {
+      throw new Error('Task is not recurring');
+    }
+
+    const pattern = originalTask.recurrencePattern;
+    const now = new Date();
+    let nextDate = new Date(now);
+
+    switch (pattern.type) {
+      case 'daily':
+        nextDate.setDate(now.getDate() + (pattern.interval || 1));
+        break;
+      case 'weekly':
+        nextDate.setDate(now.getDate() + 7);
+        break;
+      case 'weekdays':
+        do {
+          nextDate.setDate(nextDate.getDate() + 1);
+        } while (nextDate.getDay() === 0 || nextDate.getDay() === 6);
+        break;
+      case 'weekends':
+        do {
+          nextDate.setDate(nextDate.getDate() + 1);
+        } while (nextDate.getDay() !== 0 && nextDate.getDay() !== 6);
+        break;
+      case 'custom':
+        if (pattern.daysOfWeek && pattern.daysOfWeek.length > 0) {
+          let found = false;
+          for (let i = 1; i <= 7; i++) {
+            const testDate = new Date(now);
+            testDate.setDate(now.getDate() + i);
+            if (pattern.daysOfWeek.includes(testDate.getDay())) {
+              nextDate = testDate;
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            nextDate.setDate(now.getDate() + 7);
+          }
+        }
+        break;
+    }
+
+    const newTask: Task = {
+      ...originalTask,
+      id: crypto.randomUUID(),
+      completed: false,
+      createdAt: new Date().toISOString(),
+      deadline: nextDate.toISOString().split('T')[0]
+    };
+
+    await this.saveTask(newTask);
+    return newTask;
   }
 }
 

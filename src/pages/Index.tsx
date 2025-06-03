@@ -6,6 +6,7 @@ import { SearchBar } from '../components/SearchBar';
 import { MatrixBoard } from '../components/MatrixBoard';
 import { AppSidebar } from '../components/AppSidebar';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
+import { Toaster } from '@/components/ui/toaster';
 
 function AppContent() {
   return (
@@ -26,6 +27,7 @@ function AppContent() {
           </div>
         </SidebarInset>
       </div>
+      <Toaster />
     </SidebarProvider>
   );
 }

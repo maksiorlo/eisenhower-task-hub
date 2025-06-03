@@ -7,9 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Trash2, Calendar } from 'lucide-react';
+import { Trash2, Calendar, Clock, Repeat } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { RecurrenceSettings } from './RecurrenceSettings';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
@@ -24,12 +25,24 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [isRecurrenceOpen, setIsRecurrenceOpen] = useState(false);
 
   const handleToggleComplete = async () => {
-    await actions.updateTask({
+    const updatedTask = {
       ...task,
       completed: !task.completed,
-    });
+    };
+
+    await actions.updateTask(updatedTask);
+
+    // Create recurring task if this task is completed and has recurrence
+    if (!task.completed && task.isRecurring && task.recurrencePattern) {
+      try {
+        await actions.createRecurringTask(task);
+      } catch (error) {
+        console.error('Failed to create recurring task:', error);
+      }
+    }
   };
 
   const handleDelete = async (e: React.MouseEvent) => {
@@ -61,9 +74,24 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
   const handleDateSelect = async (date: Date | undefined) => {
     await actions.updateTask({
       ...task,
-      deadline: date ? date.toISOString() : undefined,
+      deadline: date ? date.toISOString().split('T')[0] : undefined,
     });
     setIsDatePickerOpen(false);
+  };
+
+  const handleTimeUpdate = async (time: string) => {
+    await actions.updateTask({
+      ...task,
+      deadlineTime: time,
+    });
+  };
+
+  const handleRecurrenceUpdate = async (isRecurring: boolean, pattern?: any) => {
+    await actions.updateTask({
+      ...task,
+      isRecurring,
+      recurrencePattern: pattern,
+    });
   };
 
   const handleDragStartWithData = (e: React.DragEvent) => {
@@ -73,6 +101,28 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
 
   const isOverdue = task.deadline && new Date(task.deadline) < new Date() && !task.completed;
   const deadlineClass = isOverdue ? 'text-red-500' : 'text-gray-500';
+
+  const getRecurrenceDisplay = () => {
+    if (!task.isRecurring || !task.recurrencePattern) return null;
+    
+    const pattern = task.recurrencePattern;
+    switch (pattern.type) {
+      case 'daily':
+        return pattern.interval === 1 ? 'ежедневно' : `каждые ${pattern.interval} дня`;
+      case 'weekly':
+        return 'еженедельно';
+      case 'weekdays':
+        return 'по будням';
+      case 'weekends':
+        return 'по выходным';
+      case 'custom':
+        const days = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+        const selectedDays = pattern.daysOfWeek?.map(day => days[day]).join(', ');
+        return selectedDays ? `по: ${selectedDays}` : 'настраиваемое';
+      default:
+        return 'повтор';
+    }
+  };
 
   return (
     <div
@@ -161,6 +211,36 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
                   onSelect={handleDateSelect}
                   initialFocus
                   className="p-3 pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
+
+            {task.deadline && (
+              <Input
+                type="time"
+                value={task.deadlineTime || ''}
+                onChange={(e) => handleTimeUpdate(e.target.value)}
+                className="h-6 w-16 text-xs px-1"
+                placeholder="Время"
+              />
+            )}
+
+            <Popover open={isRecurrenceOpen} onOpenChange={setIsRecurrenceOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`h-6 px-2 text-xs ${task.isRecurring ? 'text-blue-600' : 'text-gray-500'}`}
+                >
+                  <Repeat className="h-3 w-3 mr-1" />
+                  {task.isRecurring ? getRecurrenceDisplay() : 'Повтор'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-3" align="start">
+                <RecurrenceSettings
+                  isRecurring={task.isRecurring || false}
+                  pattern={task.recurrencePattern}
+                  onRecurrenceChange={handleRecurrenceUpdate}
                 />
               </PopoverContent>
             </Popover>
