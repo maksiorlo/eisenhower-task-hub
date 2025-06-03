@@ -9,7 +9,7 @@ import { Plus } from 'lucide-react';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
 export function MatrixBoard() {
-  const { state } = useApp();
+  const { state, actions } = useApp();
   const [creatingInQuadrant, setCreatingInQuadrant] = useState<Task['quadrant'] | null>(null);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
 
@@ -62,7 +62,7 @@ export function MatrixBoard() {
   const handleDrop = async (e: React.DragEvent, targetQuadrant: Task['quadrant']) => {
     e.preventDefault();
     if (draggedTask && draggedTask.quadrant !== targetQuadrant) {
-      await state.actions?.updateTask?.({
+      await actions.updateTask({
         ...draggedTask,
         quadrant: targetQuadrant,
       });
