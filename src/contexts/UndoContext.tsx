@@ -1,18 +1,22 @@
 
 import React, { createContext, useContext, useReducer } from 'react';
-import { Task } from '../services/StorageService';
+import { Task, Project } from '../services/StorageService';
 
 interface UndoState {
   deletedTasks: Array<{ task: Task; timestamp: number }>;
+  deletedProjects: Array<{ project: Project; tasks: Task[]; timestamp: number }>;
 }
 
 type UndoAction =
   | { type: 'ADD_DELETED_TASK'; payload: Task }
   | { type: 'CLEAR_DELETED_TASK'; payload: string }
+  | { type: 'ADD_DELETED_PROJECT'; payload: { project: Project; tasks: Task[] } }
+  | { type: 'CLEAR_DELETED_PROJECT'; payload: string }
   | { type: 'CLEAR_ALL' };
 
 const initialState: UndoState = {
   deletedTasks: [],
+  deletedProjects: [],
 };
 
 function undoReducer(state: UndoState, action: UndoAction): UndoState {
@@ -28,6 +32,20 @@ function undoReducer(state: UndoState, action: UndoAction): UndoState {
         ...state,
         deletedTasks: state.deletedTasks.filter(item => item.task.id !== action.payload),
       };
+    case 'ADD_DELETED_PROJECT':
+      return {
+        ...state,
+        deletedProjects: [...state.deletedProjects, { 
+          project: action.payload.project, 
+          tasks: action.payload.tasks, 
+          timestamp: Date.now() 
+        }].slice(-5), // Keep only last 5 deleted projects
+      };
+    case 'CLEAR_DELETED_PROJECT':
+      return {
+        ...state,
+        deletedProjects: state.deletedProjects.filter(item => item.project.id !== action.payload),
+      };
     case 'CLEAR_ALL':
       return initialState;
     default:
@@ -41,6 +59,9 @@ interface UndoContextType {
     addDeletedTask: (task: Task) => void;
     clearDeletedTask: (taskId: string) => void;
     getLastDeletedTask: () => Task | null;
+    addDeletedProject: (project: Project, tasks: Task[]) => void;
+    clearDeletedProject: (projectId: string) => void;
+    getLastDeletedProject: () => { project: Project; tasks: Task[] } | null;
     clearAll: () => void;
   };
 }
@@ -60,6 +81,16 @@ export function UndoProvider({ children }: { children: React.ReactNode }) {
     getLastDeletedTask: (): Task | null => {
       const lastDeleted = state.deletedTasks[state.deletedTasks.length - 1];
       return lastDeleted ? lastDeleted.task : null;
+    },
+    addDeletedProject: (project: Project, tasks: Task[]) => {
+      dispatch({ type: 'ADD_DELETED_PROJECT', payload: { project, tasks } });
+    },
+    clearDeletedProject: (projectId: string) => {
+      dispatch({ type: 'CLEAR_DELETED_PROJECT', payload: projectId });
+    },
+    getLastDeletedProject: (): { project: Project; tasks: Task[] } | null => {
+      const lastDeleted = state.deletedProjects[state.deletedProjects.length - 1];
+      return lastDeleted ? { project: lastDeleted.project, tasks: lastDeleted.tasks } : lastDeleted;
     },
     clearAll: () => {
       dispatch({ type: 'CLEAR_ALL' });

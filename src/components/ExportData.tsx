@@ -1,7 +1,6 @@
 
 import React from 'react';
 import { Download } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useApp } from '../contexts/AppContext';
 import { useToast } from '@/hooks/use-toast';
 
@@ -47,14 +46,9 @@ export function ExportData() {
   };
 
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={exportData}
-      className="flex items-center gap-2"
-    >
+    <div className="flex items-center gap-2 w-full" onClick={exportData}>
       <Download className="h-4 w-4" />
       Экспорт данных
-    </Button>
+    </div>
   );
 }

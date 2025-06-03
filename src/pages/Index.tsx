@@ -6,6 +6,7 @@ import { UndoProvider } from '../contexts/UndoContext';
 import { SearchBar } from '../components/SearchBar';
 import { MatrixBoard } from '../components/MatrixBoard';
 import { AppSidebar } from '../components/AppSidebar';
+import { HeaderMenu } from '../components/HeaderMenu';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import { Toaster } from '@/components/ui/toaster';
 
@@ -21,6 +22,7 @@ function AppContent() {
               <div className="flex-1">
                 <SearchBar />
               </div>
+              <HeaderMenu />
             </header>
             <div className="flex flex-1 flex-col gap-4 p-4">
               <MatrixBoard />

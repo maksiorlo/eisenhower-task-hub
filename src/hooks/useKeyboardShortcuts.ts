@@ -17,6 +17,23 @@ export function useKeyboardShortcuts() {
       // Undo (Cmd+Z / Ctrl+Z)
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
         e.preventDefault();
+        
+        // Try to restore deleted project first, then task
+        const lastDeletedProject = undoActions.getLastDeletedProject();
+        if (lastDeletedProject) {
+          actions.createProject(lastDeletedProject.project.name);
+          lastDeletedProject.tasks.forEach(task => actions.createTask({
+            title: task.title,
+            description: task.description,
+            deadline: task.deadline,
+            completed: task.completed,
+            quadrant: task.quadrant,
+            projectId: lastDeletedProject.project.id,
+          }));
+          undoActions.clearDeletedProject(lastDeletedProject.project.id);
+          return;
+        }
+        
         const lastDeletedTask = undoActions.getLastDeletedTask();
         if (lastDeletedTask) {
           actions.createTask({
@@ -28,6 +45,16 @@ export function useKeyboardShortcuts() {
             projectId: lastDeletedTask.projectId,
           });
           undoActions.clearDeletedTask(lastDeletedTask.id);
+        }
+        return;
+      }
+
+      // New task (Cmd+N / Ctrl+N)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+        e.preventDefault();
+        const createInput = document.querySelector('.create-task-input') as HTMLInputElement;
+        if (createInput) {
+          createInput.focus();
         }
         return;
       }
@@ -51,31 +78,6 @@ export function useKeyboardShortcuts() {
           if (nextProject) {
             actions.selectProject(nextProject);
           }
-        }
-        return;
-      }
-
-      // Quadrant navigation (1/2/3/4)
-      if (['1', '2', '3', '4'].includes(e.key)) {
-        const quadrantMap = {
-          '1': 'urgent-important',
-          '2': 'important-not-urgent', 
-          '3': 'urgent-not-important',
-          '4': 'not-urgent-not-important'
-        };
-        const quadrant = quadrantMap[e.key as keyof typeof quadrantMap];
-        const quadrantElement = document.querySelector(`[data-quadrant="${quadrant}"]`);
-        quadrantElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        return;
-      }
-
-      // Create task (N)
-      if (e.key === 'n' || e.key === 'N') {
-        e.preventDefault();
-        // Focus on first available create input or create one in urgent-important
-        const createInput = document.querySelector('.create-task-input') as HTMLInputElement;
-        if (createInput) {
-          createInput.focus();
         }
         return;
       }

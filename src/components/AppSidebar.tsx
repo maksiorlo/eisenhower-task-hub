@@ -1,9 +1,9 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../contexts/AppContext';
+import { useUndo } from '../contexts/UndoContext';
 import { ArchiveView } from './ArchiveView';
 import { ThemeToggle } from './ThemeToggle';
-import { ExportData } from './ExportData';
 import {
   Sidebar,
   SidebarContent,
@@ -18,14 +18,19 @@ import {
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
 import { Plus, Trash2, Archive, Settings } from 'lucide-react';
 
 export function AppSidebar() {
   const { state, actions } = useApp();
+  const { actions: undoActions } = useUndo();
   const [newProjectName, setNewProjectName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
-  const [draggedTask, setDraggedTask] = useState<string | null>(null);
+  const [draggedProject, setDraggedProject] = useState<string | null>(null);
+  const [dragOverProject, setDragOverProject] = useState<string | null>(null);
+  const [dragOverArchive, setDragOverArchive] = useState(false);
+  const { toast } = useToast();
 
   const handleCreateProject = async () => {
     if (newProjectName.trim()) {
@@ -44,20 +49,113 @@ export function AppSidebar() {
     }
   };
 
-  const handleDragOver = (e: React.DragEvent, projectId: string) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+  const handleDeleteProject = async (projectId: string) => {
+    const project = state.projects.find(p => p.id === projectId);
+    const projectTasks = state.tasks.filter(t => t.projectId === projectId);
+    
+    if (project) {
+      undoActions.addDeletedProject(project, projectTasks);
+      await actions.deleteProject(projectId);
+      
+      toast({
+        title: "Проект удалён",
+        description: "Нажмите Cmd+Z для отмены",
+        action: (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              actions.createProject(project.name);
+              projectTasks.forEach(task => actions.createTask({
+                title: task.title,
+                description: task.description,
+                deadline: task.deadline,
+                completed: task.completed,
+                quadrant: task.quadrant,
+                projectId: project.id,
+              }));
+              undoActions.clearDeletedProject(project.id);
+            }}
+          >
+            Отменить
+          </Button>
+        ),
+      });
+    }
   };
 
-  const handleDrop = async (e: React.DragEvent, projectId: string) => {
+  // Task drag and drop handlers
+  const handleTaskDragOver = (e: React.DragEvent, projectId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverProject(projectId);
+  };
+
+  const handleTaskDragLeave = () => {
+    setDragOverProject(null);
+  };
+
+  const handleTaskDrop = async (e: React.DragEvent, projectId: string) => {
     e.preventDefault();
     const taskId = e.dataTransfer.getData('text/plain');
+    setDragOverProject(null);
     
-    if (taskId && taskId !== draggedTask) {
+    if (taskId) {
       await actions.moveTaskToProject(taskId, projectId);
     }
+  };
+
+  // Project drag and drop handlers
+  const handleProjectDragStart = (e: React.DragEvent, projectId: string) => {
+    setDraggedProject(projectId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', projectId);
+  };
+
+  const handleProjectDragEnd = () => {
+    setDraggedProject(null);
+    setDragOverArchive(false);
+  };
+
+  const handleProjectDragOver = (e: React.DragEvent, targetProjectId: string) => {
+    e.preventDefault();
+    if (draggedProject && draggedProject !== targetProjectId) {
+      e.dataTransfer.dropEffect = 'move';
+    }
+  };
+
+  const handleProjectDrop = async (e: React.DragEvent, targetProjectId: string) => {
+    e.preventDefault();
+    const draggedProjectId = e.dataTransfer.getData('text/plain');
     
-    setDraggedTask(null);
+    if (draggedProjectId && draggedProjectId !== targetProjectId) {
+      // Reorder projects logic would go here
+      console.log('Reorder projects:', draggedProjectId, 'to', targetProjectId);
+    }
+  };
+
+  // Archive drag and drop
+  const handleArchiveDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (draggedProject) {
+      e.dataTransfer.dropEffect = 'move';
+      setDragOverArchive(true);
+    }
+  };
+
+  const handleArchiveDragLeave = () => {
+    setDragOverArchive(false);
+  };
+
+  const handleArchiveDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const projectId = e.dataTransfer.getData('text/plain');
+    setDragOverArchive(false);
+    
+    if (projectId && draggedProject) {
+      // Archive project logic
+      await handleDeleteProject(projectId);
+    }
   };
 
   return (
@@ -107,9 +205,21 @@ export function AppSidebar() {
                 {state.projects.map((project) => (
                   <SidebarMenuItem key={project.id}>
                     <div
-                      className="flex items-center justify-between w-full group"
-                      onDragOver={(e) => handleDragOver(e, project.id)}
-                      onDrop={(e) => handleDrop(e, project.id)}
+                      className={`flex items-center justify-between w-full group cursor-move transition-colors ${
+                        dragOverProject === project.id ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+                      }`}
+                      draggable
+                      onDragStart={(e) => handleProjectDragStart(e, project.id)}
+                      onDragEnd={handleProjectDragEnd}
+                      onDragOver={(e) => {
+                        handleTaskDragOver(e, project.id);
+                        handleProjectDragOver(e, project.id);
+                      }}
+                      onDragLeave={handleTaskDragLeave}
+                      onDrop={(e) => {
+                        handleTaskDrop(e, project.id);
+                        handleProjectDrop(e, project.id);
+                      }}
                     >
                       <SidebarMenuButton
                         isActive={state.currentProject?.id === project.id}
@@ -122,7 +232,7 @@ export function AppSidebar() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => actions.deleteProject(project.id)}
+                        onClick={() => handleDeleteProject(project.id)}
                         className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <Trash2 className="h-3 w-3" />
@@ -139,7 +249,15 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton onClick={() => setShowArchive(true)}>
+                  <SidebarMenuButton 
+                    onClick={() => setShowArchive(true)}
+                    className={`transition-colors ${
+                      dragOverArchive ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+                    }`}
+                    onDragOver={handleArchiveDragOver}
+                    onDragLeave={handleArchiveDragLeave}
+                    onDrop={handleArchiveDrop}
+                  >
                     <Archive className="h-4 w-4" />
                     <span>Архив</span>
                   </SidebarMenuButton>
@@ -150,12 +268,9 @@ export function AppSidebar() {
         </SidebarContent>
 
         <SidebarFooter className="border-t p-4">
-          <div className="space-y-2">
-            <ExportData />
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Settings className="h-3 w-3" />
-              <span>Горячие клавиши: 1-4 (квадранты), / (поиск), ← → (проекты)</span>
-            </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Settings className="h-3 w-3" />
+            <span>Горячие клавиши: ← → (проекты), ПКМ (меню задач)</span>
           </div>
         </SidebarFooter>
       </Sidebar>
