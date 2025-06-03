@@ -93,6 +93,9 @@ interface AppContextType {
   };
 }
 
+// Create the context
+const AppContext = createContext<AppContextType | undefined>(undefined);
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const { toast } = useToast();
