@@ -2,17 +2,18 @@
 import React, { useState } from 'react';
 import { Task } from '../services/StorageService';
 import { useApp } from '../contexts/AppContext';
-import { TaskCard } from './TaskCard';
-import { TaskModal } from './TaskModal';
+import { InlineEditableTask } from './InlineEditableTask';
+import { InlineTaskInput } from './InlineTaskInput';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
 export function MatrixBoard() {
-  const { state, actions } = useApp();
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [defaultQuadrant, setDefaultQuadrant] = useState<Task['quadrant'] | undefined>();
+  const { state } = useApp();
+  const [creatingInQuadrant, setCreatingInQuadrant] = useState<Task['quadrant'] | null>(null);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
+
+  useKeyboardShortcuts();
 
   if (!state.currentProject) {
     return (
@@ -23,35 +24,31 @@ export function MatrixBoard() {
   }
 
   const getTasksByQuadrant = (quadrant: Task['quadrant']) => {
-    return state.tasks
-      .filter(task => task.quadrant === quadrant)
-      .sort((a, b) => {
-        // Sort by deadline (closest first), then by creation date
-        if (a.deadline && b.deadline) {
-          return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
-        }
-        if (a.deadline && !b.deadline) return -1;
-        if (!a.deadline && b.deadline) return 1;
-        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      });
+    const filteredTasks = state.tasks.filter(task => task.quadrant === quadrant);
+    
+    // Sort: completed tasks at bottom, then by deadline proximity
+    return filteredTasks.sort((a, b) => {
+      // Completed tasks go to bottom
+      if (a.completed !== b.completed) {
+        return a.completed ? 1 : -1;
+      }
+      
+      // Sort by deadline (closest first), then by creation date
+      if (a.deadline && b.deadline) {
+        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+      }
+      if (a.deadline && !b.deadline) return -1;
+      if (!a.deadline && b.deadline) return 1;
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
   };
 
   const handleCreateTask = (quadrant: Task['quadrant']) => {
-    setSelectedTask(null);
-    setDefaultQuadrant(quadrant);
-    setIsModalOpen(true);
+    setCreatingInQuadrant(quadrant);
   };
 
-  const handleEditTask = (task: Task) => {
-    setSelectedTask(task);
-    setDefaultQuadrant(undefined);
-    setIsModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setSelectedTask(null);
-    setDefaultQuadrant(undefined);
+  const handleCancelCreate = () => {
+    setCreatingInQuadrant(null);
   };
 
   const handleDragStart = (e: React.DragEvent, task: Task) => {
@@ -65,7 +62,7 @@ export function MatrixBoard() {
   const handleDrop = async (e: React.DragEvent, targetQuadrant: Task['quadrant']) => {
     e.preventDefault();
     if (draggedTask && draggedTask.quadrant !== targetQuadrant) {
-      await actions.updateTask({
+      await state.actions?.updateTask?.({
         ...draggedTask,
         quadrant: targetQuadrant,
       });
@@ -113,6 +110,7 @@ export function MatrixBoard() {
           return (
             <div
               key={quadrant.id}
+              data-quadrant={quadrant.id}
               className={`border-2 rounded-lg ${quadrant.color} min-h-[300px]`}
               onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, quadrant.id)}
@@ -133,17 +131,22 @@ export function MatrixBoard() {
               </div>
               
               <div className="p-4 space-y-3">
+                {creatingInQuadrant === quadrant.id && (
+                  <InlineTaskInput
+                    quadrant={quadrant.id}
+                    onCancel={handleCancelCreate}
+                  />
+                )}
+                
                 {tasks.map((task) => (
-                  <div key={task.id} className="group">
-                    <TaskCard
-                      task={task}
-                      onEdit={handleEditTask}
-                      onDragStart={handleDragStart}
-                    />
-                  </div>
+                  <InlineEditableTask
+                    key={task.id}
+                    task={task}
+                    onDragStart={handleDragStart}
+                  />
                 ))}
                 
-                {tasks.length === 0 && (
+                {tasks.length === 0 && creatingInQuadrant !== quadrant.id && (
                   <div className="text-center py-8 text-gray-400">
                     <p className="text-sm">Нет задач</p>
                     <Button
@@ -162,13 +165,6 @@ export function MatrixBoard() {
           );
         })}
       </div>
-
-      <TaskModal
-        task={selectedTask}
-        isOpen={isModalOpen}
-        onClose={handleCloseModal}
-        defaultQuadrant={defaultQuadrant}
-      />
     </div>
   );
 }

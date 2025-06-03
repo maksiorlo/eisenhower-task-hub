@@ -1,6 +1,7 @@
 
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { Task, Project, storageService } from '../services/StorageService';
+import { useToast } from '@/hooks/use-toast';
 
 interface AppState {
   projects: Project[];
@@ -87,6 +88,7 @@ interface AppContextType {
     deleteTask: (id: string) => Promise<void>;
     loadTasks: (projectId: string) => Promise<void>;
     searchTasks: (query: string) => Promise<void>;
+    moveTaskToProject: (taskId: string, targetProjectId: string) => Promise<void>;
   };
 }
 
@@ -94,6 +96,16 @@ const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const { toast } = useToast();
+
+  const handleError = (error: Error, operation: string) => {
+    console.error(`Error during ${operation}:`, error);
+    toast({
+      title: "Ошибка сохранения",
+      description: "Проверьте память браузера. Изменения могут быть потеряны.",
+      variant: "destructive",
+    });
+  };
 
   const actions = {
     loadProjects: async () => {
@@ -102,29 +114,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const projects = await storageService.getAllProjects();
         dispatch({ type: 'SET_PROJECTS', payload: projects });
         
-        // Select the first project if available
         if (projects.length > 0 && !state.currentProject) {
           await actions.selectProject(projects[0]);
         }
       } catch (error) {
-        console.error('Error loading projects:', error);
+        handleError(error as Error, 'loading projects');
       } finally {
         dispatch({ type: 'SET_LOADING', payload: false });
       }
     },
 
     createProject: async (name: string) => {
-      const project: Project = {
-        id: crypto.randomUUID(),
-        name,
-        createdAt: new Date().toISOString(),
-      };
-      
-      await storageService.saveProject(project);
-      dispatch({ type: 'ADD_PROJECT', payload: project });
-      
-      // Auto-select the new project
-      await actions.selectProject(project);
+      try {
+        const project: Project = {
+          id: crypto.randomUUID(),
+          name,
+          createdAt: new Date().toISOString(),
+        };
+        
+        await storageService.saveProject(project);
+        dispatch({ type: 'ADD_PROJECT', payload: project });
+        await actions.selectProject(project);
+      } catch (error) {
+        handleError(error as Error, 'creating project');
+      }
     },
 
     selectProject: async (project: Project) => {
@@ -133,46 +146,108 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
 
     deleteProject: async (id: string) => {
-      await storageService.deleteProject(id);
-      dispatch({ type: 'DELETE_PROJECT', payload: id });
+      try {
+        await storageService.deleteProject(id);
+        dispatch({ type: 'DELETE_PROJECT', payload: id });
+      } catch (error) {
+        handleError(error as Error, 'deleting project');
+      }
     },
 
     createTask: async (taskData: Omit<Task, 'id' | 'createdAt'>) => {
-      const task: Task = {
-        ...taskData,
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-      };
-      
-      await storageService.saveTask(task);
-      dispatch({ type: 'ADD_TASK', payload: task });
+      try {
+        const task: Task = {
+          ...taskData,
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+        };
+        
+        await storageService.saveTask(task);
+        dispatch({ type: 'ADD_TASK', payload: task });
+      } catch (error) {
+        handleError(error as Error, 'creating task');
+      }
     },
 
     updateTask: async (task: Task) => {
-      await storageService.saveTask(task);
-      dispatch({ type: 'UPDATE_TASK', payload: task });
+      try {
+        await storageService.saveTask(task);
+        dispatch({ type: 'UPDATE_TASK', payload: task });
+      } catch (error) {
+        handleError(error as Error, 'updating task');
+      }
     },
 
     deleteTask: async (id: string) => {
-      await storageService.deleteTask(id);
-      dispatch({ type: 'DELETE_TASK', payload: id });
+      try {
+        await storageService.deleteTask(id);
+        dispatch({ type: 'DELETE_TASK', payload: id });
+      } catch (error) {
+        handleError(error as Error, 'deleting task');
+      }
     },
 
     loadTasks: async (projectId: string) => {
-      const tasks = await storageService.getTasksByProject(projectId);
-      dispatch({ type: 'SET_TASKS', payload: tasks });
+      try {
+        const tasks = await storageService.getTasksByProject(projectId);
+        dispatch({ type: 'SET_TASKS', payload: tasks });
+      } catch (error) {
+        handleError(error as Error, 'loading tasks');
+      }
     },
 
     searchTasks: async (query: string) => {
       dispatch({ type: 'SET_SEARCH_QUERY', payload: query });
-      if (query.trim()) {
-        const tasks = await storageService.searchTasks(query, state.currentProject?.id);
-        dispatch({ type: 'SET_TASKS', payload: tasks });
-      } else if (state.currentProject) {
-        await actions.loadTasks(state.currentProject.id);
+      try {
+        if (query.trim()) {
+          const tasks = await storageService.searchTasks(query, state.currentProject?.id);
+          dispatch({ type: 'SET_TASKS', payload: tasks });
+        } else if (state.currentProject) {
+          await actions.loadTasks(state.currentProject.id);
+        }
+      } catch (error) {
+        handleError(error as Error, 'searching tasks');
+      }
+    },
+
+    moveTaskToProject: async (taskId: string, targetProjectId: string) => {
+      try {
+        const task = state.tasks.find(t => t.id === taskId);
+        if (task) {
+          const updatedTask = { ...task, projectId: targetProjectId };
+          await storageService.saveTask(updatedTask);
+          dispatch({ type: 'DELETE_TASK', payload: taskId });
+        }
+      } catch (error) {
+        handleError(error as Error, 'moving task');
       }
     },
   };
+
+  // Auto-cleanup completed tasks at midnight Moscow time
+  useEffect(() => {
+    const checkAndCleanup = async () => {
+      const now = new Date();
+      const moscowTime = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Moscow"}));
+      
+      if (moscowTime.getHours() === 0 && moscowTime.getMinutes() === 0) {
+        try {
+          const completedTasks = state.tasks.filter(task => task.completed);
+          for (const task of completedTasks) {
+            await storageService.deleteTask(task.id);
+          }
+          if (state.currentProject) {
+            await actions.loadTasks(state.currentProject.id);
+          }
+        } catch (error) {
+          handleError(error as Error, 'auto-cleanup');
+        }
+      }
+    };
+
+    const interval = setInterval(checkAndCleanup, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [state.tasks, state.currentProject]);
 
   useEffect(() => {
     actions.loadProjects();
