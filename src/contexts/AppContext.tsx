@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { Task, Project, storageService } from '../services/StorageService';
 import { useToast } from '@/hooks/use-toast';
@@ -21,6 +22,7 @@ interface AppActions {
   updateTask: (task: Task) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   createProject: (name: string) => Promise<void>;
+  updateProject: (project: Project) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   archiveProject: (id: string) => Promise<void>;
   selectProject: (project: Project) => void;
@@ -29,6 +31,7 @@ interface AppActions {
   loadTasks: () => Promise<void>;
   searchTasks: (query: string) => void;
   moveTaskToProject: (taskId: string, projectId: string) => Promise<void>;
+  moveTaskToArchive: (taskId: string) => Promise<void>;
   createRecurringTask: (originalTask: Task) => Promise<void>;
 }
 
@@ -90,6 +93,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         projects: state.projects.map(project =>
           project.id === action.payload.id ? action.payload : project
         ),
+        currentProject: state.currentProject?.id === action.payload.id ? action.payload : state.currentProject,
       };
     case 'SET_SEARCH_QUERY':
       return { ...state, searchQuery: action.payload };
@@ -198,6 +202,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: 'ADD_PROJECT', payload: project });
     },
 
+    updateProject: async (project) => {
+      await storageService.saveProject(project);
+      dispatch({ type: 'UPDATE_PROJECT', payload: project });
+    },
+
     deleteProject: async (id) => {
       await storageService.deleteProject(id);
       dispatch({ type: 'DELETE_PROJECT', payload: id });
@@ -231,6 +240,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         toast({
           title: "Задача перемещена",
           description: "Задача успешно перемещена в другой проект",
+          duration: 10000,
+        });
+      }
+    },
+
+    moveTaskToArchive: async (taskId) => {
+      const task = state.tasks.find(t => t.id === taskId);
+      if (task) {
+        const updatedTask = { ...task, archived: true };
+        await storageService.saveTask(updatedTask);
+        
+        // Remove task from current view
+        dispatch({ type: 'DELETE_TASK', payload: taskId });
+        
+        toast({
+          title: "Задача архивирована",
+          description: "Задача перемещена в архив",
           duration: 10000,
         });
       }

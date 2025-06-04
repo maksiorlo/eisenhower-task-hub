@@ -72,14 +72,21 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
     { value: 'not-urgent-not-important', label: 'Не срочно и не важно' },
   ] as const;
 
+  // Calculate rows for description based on content or default
+  const getDescriptionRows = () => {
+    if (!description) return 8;
+    const lines = description.split('\n').length;
+    return Math.max(8, Math.min(lines + 2, 15));
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{task ? 'Редактировать задачу' : 'Новая задача'}</DialogTitle>
         </DialogHeader>
         
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <Label htmlFor="title">Заголовок *</Label>
             <Input
@@ -89,6 +96,7 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
               onChange={(e) => setTitle(e.target.value)}
               autoFocus
               required
+              className="text-base"
             />
           </div>
 
@@ -99,37 +107,41 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
               placeholder="Дополнительная информация (опционально)"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              rows={3}
+              rows={getDescriptionRows()}
+              className="text-base resize-none"
             />
           </div>
 
-          <div>
-            <Label htmlFor="deadline">Дедлайн</Label>
-            <Input
-              id="deadline"
-              type="date"
-              value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="deadline">Дедлайн</Label>
+              <Input
+                id="deadline"
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+                className="text-base"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="quadrant">Квадрант</Label>
+              <Select value={quadrant} onValueChange={(value: Task['quadrant']) => setQuadrant(value)}>
+                <SelectTrigger className="text-base">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {quadrantOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          <div>
-            <Label htmlFor="quadrant">Квадрант</Label>
-            <Select value={quadrant} onValueChange={(value: Task['quadrant']) => setQuadrant(value)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {quadrantOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-4">
+          <div className="flex justify-end gap-3 pt-6">
             <Button type="button" variant="outline" onClick={onClose}>
               Отмена
             </Button>

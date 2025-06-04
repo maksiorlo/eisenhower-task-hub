@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useUndo } from '../contexts/UndoContext';
@@ -30,6 +31,7 @@ export function AppSidebar() {
   const [draggedProject, setDraggedProject] = useState<string | null>(null);
   const [dragOverProject, setDragOverProject] = useState<string | null>(null);
   const [dragOverArchive, setDragOverArchive] = useState(false);
+  const [draggedTask, setDraggedTask] = useState<string | null>(null);
   const { toast } = useToast();
 
   const handleCreateProject = async () => {
@@ -58,8 +60,12 @@ export function AppSidebar() {
   // Task drag and drop handlers
   const handleTaskDragOver = (e: React.DragEvent, projectId: string) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDragOverProject(projectId);
+    const draggedData = e.dataTransfer.getData('text/plain');
+    // Check if it's a task (not a project)
+    if (state.tasks.some(t => t.id === draggedData)) {
+      e.dataTransfer.dropEffect = 'move';
+      setDragOverProject(projectId);
+    }
   };
 
   const handleTaskDragLeave = () => {
@@ -71,7 +77,7 @@ export function AppSidebar() {
     const taskId = e.dataTransfer.getData('text/plain');
     setDragOverProject(null);
     
-    if (taskId) {
+    if (taskId && state.tasks.some(t => t.id === taskId)) {
       await actions.moveTaskToProject(taskId, projectId);
     }
   };
@@ -108,7 +114,10 @@ export function AppSidebar() {
   // Archive drag and drop
   const handleArchiveDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    if (draggedProject) {
+    const draggedData = e.dataTransfer.getData('text/plain');
+    
+    // Check if it's a project or task
+    if (draggedProject || state.tasks.some(t => t.id === draggedData)) {
       e.dataTransfer.dropEffect = 'move';
       setDragOverArchive(true);
     }
@@ -120,18 +129,22 @@ export function AppSidebar() {
 
   const handleArchiveDrop = async (e: React.DragEvent) => {
     e.preventDefault();
-    const projectId = e.dataTransfer.getData('text/plain');
+    const draggedData = e.dataTransfer.getData('text/plain');
     setDragOverArchive(false);
     
-    if (projectId && draggedProject) {
-      // Archive project instead of deleting
-      await actions.archiveProject(projectId);
+    // Check if it's a project
+    if (draggedProject && state.projects.some(p => p.id === draggedData)) {
+      await actions.archiveProject(draggedData);
       
       toast({
         title: "Проект архивирован",
         description: "Проект перемещен в архив",
         duration: 10000,
       });
+    }
+    // Check if it's a task
+    else if (state.tasks.some(t => t.id === draggedData)) {
+      await actions.moveTaskToArchive(draggedData);
     }
   };
 

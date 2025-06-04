@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Task } from '../services/StorageService';
 import { useApp } from '../contexts/AppContext';
@@ -131,10 +132,18 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
     }
   };
 
+  const truncateText = (text: string, maxLines: number = 6) => {
+    const lines = text.split('\n');
+    if (lines.length > maxLines) {
+      return lines.slice(0, maxLines).join('\n') + '...';
+    }
+    return text;
+  };
+
   return (
     <>
       <div
-        className={`p-3 bg-white border rounded-lg shadow-sm hover:shadow-md transition-all duration-200 group ${
+        className={`p-3 bg-white border rounded-lg shadow-sm hover:shadow-md transition-all duration-200 group cursor-pointer ${
           task.completed ? 'opacity-60' : ''
         }`}
         draggable
@@ -183,17 +192,18 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
                     setIsEditingDescription(false);
                   }
                 }}
-                className="mt-1 min-h-[60px] text-xs border-0 p-0 resize-none focus-visible:ring-0"
+                className="mt-1 min-h-[96px] text-xs border-0 p-0 resize-none focus-visible:ring-0"
                 placeholder="Добавить описание..."
+                rows={6}
               />
             ) : (
               <p
-                className={`text-xs mt-1 cursor-text min-h-[16px] break-words whitespace-normal leading-tight ${
+                className={`text-xs mt-1 cursor-text min-h-[16px] break-words whitespace-pre-wrap leading-tight max-h-[96px] overflow-hidden ${
                   task.completed ? 'line-through text-gray-400' : 'text-gray-600'
                 } ${!task.description ? 'text-gray-400' : ''}`}
                 onClick={() => setIsEditingDescription(true)}
               >
-                {task.description || 'Добавить описание...'}
+                {task.description ? truncateText(task.description) : 'Добавить описание...'}
               </p>
             )}
             
@@ -230,7 +240,7 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
                     value={task.deadlineTime || ''}
                     onChange={handleTimeUpdate}
                     className={`h-6 w-20 text-xs px-2 border-0 bg-transparent focus:bg-white focus:border ${deadlineClass}`}
-                    placeholder="00:00"
+                    placeholder="--:--"
                   />
                 </div>
               )}
