@@ -42,6 +42,7 @@ interface AppState {
   projects: Project[];
   currentProject: Project | null;
   loading: boolean;
+  searchQuery: string;
 }
 
 interface AppActions {
@@ -53,6 +54,9 @@ interface AppActions {
   archiveProject: (id: string) => Promise<void>;
   selectProject: (project: Project) => void;
   loadData: () => Promise<void>;
+  loadProjects: () => Promise<void>;
+  loadTasks: () => Promise<void>;
+  searchTasks: (query: string) => void;
   moveTaskToProject: (taskId: string, projectId: string) => Promise<void>;
   createRecurringTask: (originalTask: Task) => Promise<void>;
 }
@@ -74,7 +78,8 @@ type AppAction =
   | { type: 'DELETE_TASK'; payload: string }
   | { type: 'ADD_PROJECT'; payload: Project }
   | { type: 'DELETE_PROJECT'; payload: string }
-  | { type: 'UPDATE_PROJECT'; payload: Project };
+  | { type: 'UPDATE_PROJECT'; payload: Project }
+  | { type: 'SET_SEARCH_QUERY'; payload: string };
 
 function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
@@ -115,6 +120,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
           project.id === action.payload.id ? action.payload : project
         ),
       };
+    case 'SET_SEARCH_QUERY':
+      return { ...state, searchQuery: action.payload };
     default:
       return state;
   }
@@ -126,6 +133,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     projects: [],
     currentProject: null,
     loading: true,
+    searchQuery: '',
   });
 
   const { toast } = useToast();
@@ -156,6 +164,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
+  };
+
+  const loadProjects = async () => {
+    try {
+      const projects = await storageService.getAllProjects();
+      dispatch({ type: 'SET_PROJECTS', payload: projects });
+    } catch (error) {
+      console.error('Failed to load projects:', error);
+    }
+  };
+
+  const loadTasks = async () => {
+    if (state.currentProject) {
+      try {
+        const tasks = await storageService.getTasksByProject(state.currentProject.id);
+        dispatch({ type: 'SET_TASKS', payload: tasks });
+      } catch (error) {
+        console.error('Failed to load tasks:', error);
+      }
+    }
+  };
+
+  const searchTasks = (query: string) => {
+    dispatch({ type: 'SET_SEARCH_QUERY', payload: query });
   };
 
   const actions: AppActions = {
@@ -212,6 +244,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
 
     loadData,
+    loadProjects,
+    loadTasks,
+    searchTasks,
 
     moveTaskToProject: async (taskId, projectId) => {
       const task = state.tasks.find(t => t.id === taskId);
