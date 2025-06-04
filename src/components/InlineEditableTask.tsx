@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Task } from '../services/StorageService';
 import { useApp } from '../contexts/AppContext';
 import { useUndo } from '../contexts/UndoContext';
@@ -29,6 +29,7 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isRecurrenceOpen, setIsRecurrenceOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   const handleToggleComplete = async () => {
     const updatedTask = {
@@ -140,6 +141,34 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
     return text;
   };
 
+  const makeLinksClickable = (text: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+    
+    return parts.map((part, index) => {
+      if (urlRegex.test(part)) {
+        return (
+          <a 
+            key={index} 
+            href={part} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-blue-600 underline hover:text-blue-800"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {part}
+          </a>
+        );
+      }
+      return part;
+    });
+  };
+
+  const getTitleHeight = () => {
+    if (!titleRef.current) return 'auto';
+    return `${titleRef.current.scrollHeight}px`;
+  };
+
   return (
     <>
       <div
@@ -158,27 +187,31 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
           
           <div className="flex-1 min-w-0">
             {isEditingTitle ? (
-              <Input
+              <Textarea
                 defaultValue={task.title}
                 autoFocus
                 onBlur={(e) => handleTitleUpdate(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
                     handleTitleUpdate(e.currentTarget.value);
                   } else if (e.key === 'Escape') {
                     setIsEditingTitle(false);
                   }
                 }}
-                className="h-auto p-0 border-0 text-sm font-medium focus-visible:ring-0"
+                className="h-auto p-0 border-0 text-sm font-medium focus-visible:ring-0 resize-none"
+                style={{ height: getTitleHeight() }}
+                rows={Math.max(1, task.title.split('\n').length)}
               />
             ) : (
               <h4
-                className={`font-medium text-sm cursor-text break-words whitespace-normal leading-tight ${
+                ref={titleRef}
+                className={`font-medium text-sm cursor-text break-words whitespace-pre-wrap leading-tight ${
                   task.completed ? 'line-through text-gray-500' : 'text-gray-900'
                 }`}
                 onClick={() => setIsEditingTitle(true)}
               >
-                {task.title}
+                {makeLinksClickable(task.title)}
               </h4>
             )}
             
@@ -203,7 +236,7 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
                 } ${!task.description ? 'text-gray-400' : ''}`}
                 onClick={() => setIsEditingDescription(true)}
               >
-                {task.description ? truncateText(task.description) : 'Добавить описание...'}
+                {task.description ? makeLinksClickable(truncateText(task.description)) : 'Добавить описание...'}
               </p>
             )}
             

@@ -32,6 +32,8 @@ export function AppSidebar() {
   const [dragOverProject, setDragOverProject] = useState<string | null>(null);
   const [dragOverArchive, setDragOverArchive] = useState(false);
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
+  const [editingProject, setEditingProject] = useState<string | null>(null);
+  const [editingProjectName, setEditingProjectName] = useState('');
   const { toast } = useToast();
 
   const handleCreateProject = async () => {
@@ -54,6 +56,32 @@ export function AppSidebar() {
     } else if (e.key === 'Escape') {
       setNewProjectName('');
       setIsCreating(false);
+    }
+  };
+
+  const handleProjectDoubleClick = (project: any) => {
+    setEditingProject(project.id);
+    setEditingProjectName(project.name);
+  };
+
+  const handleRenameProject = async () => {
+    const project = state.projects.find(p => p.id === editingProject);
+    if (project && editingProjectName.trim() && editingProjectName.trim() !== project.name) {
+      await actions.updateProject({
+        ...project,
+        name: editingProjectName.trim(),
+      });
+    }
+    setEditingProject(null);
+    setEditingProjectName('');
+  };
+
+  const handleRenameKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleRenameProject();
+    } else if (e.key === 'Escape') {
+      setEditingProject(null);
+      setEditingProjectName('');
     }
   };
 
@@ -211,16 +239,28 @@ export function AppSidebar() {
                           handleTaskDrop(e, project.id);
                           handleProjectDrop(e, project.id);
                         }}
+                        onDoubleClick={() => handleProjectDoubleClick(project)}
                       >
-                        <SidebarMenuButton
-                          isActive={state.currentProject?.id === project.id}
-                          onClick={() => actions.selectProject(project)}
-                          className="flex-1 min-w-0"
-                        >
-                          <span className="truncate text-left whitespace-normal break-words leading-tight">
-                            {project.name}
-                          </span>
-                        </SidebarMenuButton>
+                        {editingProject === project.id ? (
+                          <Input
+                            value={editingProjectName}
+                            onChange={(e) => setEditingProjectName(e.target.value)}
+                            onKeyDown={handleRenameKeyPress}
+                            onBlur={handleRenameProject}
+                            className="h-8 text-sm"
+                            autoFocus
+                          />
+                        ) : (
+                          <SidebarMenuButton
+                            isActive={state.currentProject?.id === project.id}
+                            onClick={() => actions.selectProject(project)}
+                            className="flex-1 min-w-0"
+                          >
+                            <span className="truncate text-left whitespace-normal break-words leading-tight">
+                              {project.name}
+                            </span>
+                          </SidebarMenuButton>
+                        )}
                       </div>
                     </ProjectContextMenu>
                   </SidebarMenuItem>

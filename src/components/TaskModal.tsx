@@ -79,9 +79,31 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
     return Math.max(8, Math.min(lines + 2, 15));
   };
 
+  const makeLinksClickable = (text: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+    
+    return parts.map((part, index) => {
+      if (urlRegex.test(part)) {
+        return (
+          <a 
+            key={index} 
+            href={part} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-blue-600 underline hover:text-blue-800"
+          >
+            {part}
+          </a>
+        );
+      }
+      return part;
+    });
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{task ? 'Редактировать задачу' : 'Новая задача'}</DialogTitle>
         </DialogHeader>
@@ -98,6 +120,11 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
               required
               className="text-base"
             />
+            {title && (
+              <div className="mt-2 text-sm text-gray-600 whitespace-pre-wrap">
+                {makeLinksClickable(title)}
+              </div>
+            )}
           </div>
 
           <div>
@@ -110,6 +137,11 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
               rows={getDescriptionRows()}
               className="text-base resize-none"
             />
+            {description && (
+              <div className="mt-2 text-sm text-gray-600 whitespace-pre-wrap">
+                {makeLinksClickable(description)}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

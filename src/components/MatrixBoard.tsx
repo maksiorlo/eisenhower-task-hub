@@ -58,6 +58,15 @@ export function MatrixBoard() {
     setCreatingInQuadrant(null);
   };
 
+  const handleQuadrantDoubleClick = (e: React.MouseEvent, quadrant: Task['quadrant']) => {
+    // Don't create task if clicking on a task card or button
+    if ((e.target as HTMLElement).closest('[data-task-card]') || 
+        (e.target as HTMLElement).closest('button')) {
+      return;
+    }
+    handleCreateTask(quadrant);
+  };
+
   const handleDragStart = (e: React.DragEvent, task: Task) => {
     setDraggedTask(task);
     e.dataTransfer.effectAllowed = 'move';
@@ -136,28 +145,24 @@ export function MatrixBoard() {
     {
       id: 'urgent-important' as const,
       title: 'Срочно и важно',
-      subtitle: 'Сделать немедленно',
       color: 'border-red-200 bg-red-50',
       headerColor: 'bg-red-100 text-red-800',
     },
     {
       id: 'important-not-urgent' as const,
       title: 'Важно, не срочно',
-      subtitle: 'Запланировать',
       color: 'border-green-200 bg-green-50',
       headerColor: 'bg-green-100 text-green-800',
     },
     {
       id: 'urgent-not-important' as const,
       title: 'Срочно, не важно',
-      subtitle: 'Делегировать',
       color: 'border-yellow-200 bg-yellow-50',
       headerColor: 'bg-yellow-100 text-yellow-800',
     },
     {
       id: 'not-urgent-not-important' as const,
       title: 'Не срочно и не важно',
-      subtitle: 'Исключить',
       color: 'border-gray-200 bg-gray-50',
       headerColor: 'bg-gray-100 text-gray-600',
     },
@@ -180,11 +185,11 @@ export function MatrixBoard() {
               onDragOver={(e) => handleDragOver(e, quadrant.id)}
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, quadrant.id)}
+              onDoubleClick={(e) => handleQuadrantDoubleClick(e, quadrant.id)}
             >
               <div className={`p-4 rounded-t-lg ${quadrant.headerColor} flex items-center justify-between`}>
                 <div>
                   <h3 className="font-semibold text-sm">{quadrant.title}</h3>
-                  <p className="text-xs opacity-75">{quadrant.subtitle}</p>
                 </div>
                 <Button
                   size="sm"
@@ -206,7 +211,7 @@ export function MatrixBoard() {
                 
                 {tasks.map((task, index) => (
                   <TaskContextMenu key={task.id} task={task}>
-                    <div>
+                    <div data-task-card>
                       <InlineEditableTask
                         task={task}
                         onDragStart={handleDragStart}
