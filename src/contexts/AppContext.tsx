@@ -5,71 +5,79 @@ import { useToast } from '@/hooks/use-toast';
 
 interface AppState {
   projects: Project[];
-  currentProject: Project | null;
   tasks: Task[];
-  isLoading: boolean;
+  currentProject: Project | null;
   searchQuery: string;
+  isLoading: boolean;
 }
 
 type AppAction =
-  | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SET_PROJECTS'; payload: Project[] }
-  | { type: 'SET_CURRENT_PROJECT'; payload: Project | null }
   | { type: 'SET_TASKS'; payload: Task[] }
+  | { type: 'SET_CURRENT_PROJECT'; payload: Project | null }
+  | { type: 'SET_SEARCH_QUERY'; payload: string }
+  | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'ADD_PROJECT'; payload: Project }
   | { type: 'UPDATE_PROJECT'; payload: Project }
   | { type: 'DELETE_PROJECT'; payload: string }
   | { type: 'ADD_TASK'; payload: Task }
   | { type: 'UPDATE_TASK'; payload: Task }
-  | { type: 'DELETE_TASK'; payload: string }
-  | { type: 'SET_SEARCH_QUERY'; payload: string };
+  | { type: 'DELETE_TASK'; payload: string };
 
 const initialState: AppState = {
   projects: [],
-  currentProject: null,
   tasks: [],
-  isLoading: true,
+  currentProject: null,
   searchQuery: '',
+  isLoading: false,
 };
 
 function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
-    case 'SET_LOADING':
-      return { ...state, isLoading: action.payload };
     case 'SET_PROJECTS':
       return { ...state, projects: action.payload };
-    case 'SET_CURRENT_PROJECT':
-      return { ...state, currentProject: action.payload };
     case 'SET_TASKS':
       return { ...state, tasks: action.payload };
+    case 'SET_CURRENT_PROJECT':
+      return { ...state, currentProject: action.payload };
+    case 'SET_SEARCH_QUERY':
+      return { ...state, searchQuery: action.payload };
+    case 'SET_LOADING':
+      return { ...state, isLoading: action.payload };
     case 'ADD_PROJECT':
       return { ...state, projects: [...state.projects, action.payload] };
     case 'UPDATE_PROJECT':
       return {
         ...state,
-        projects: state.projects.map(p => p.id === action.payload.id ? action.payload : p),
-        currentProject: state.currentProject?.id === action.payload.id ? action.payload : state.currentProject,
+        projects: state.projects.map(p => 
+          p.id === action.payload.id ? action.payload : p
+        ),
+        currentProject: state.currentProject?.id === action.payload.id 
+          ? action.payload 
+          : state.currentProject
       };
     case 'DELETE_PROJECT':
       return {
         ...state,
         projects: state.projects.filter(p => p.id !== action.payload),
-        currentProject: state.currentProject?.id === action.payload ? null : state.currentProject,
+        currentProject: state.currentProject?.id === action.payload 
+          ? null 
+          : state.currentProject
       };
     case 'ADD_TASK':
       return { ...state, tasks: [...state.tasks, action.payload] };
     case 'UPDATE_TASK':
       return {
         ...state,
-        tasks: state.tasks.map(t => t.id === action.payload.id ? action.payload : t),
+        tasks: state.tasks.map(t => 
+          t.id === action.payload.id ? action.payload : t
+        )
       };
     case 'DELETE_TASK':
       return {
         ...state,
-        tasks: state.tasks.filter(t => t.id !== action.payload),
+        tasks: state.tasks.filter(t => t.id !== action.payload)
       };
-    case 'SET_SEARCH_QUERY':
-      return { ...state, searchQuery: action.payload };
     default:
       return state;
   }
@@ -77,52 +85,65 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
 interface AppContextType {
   state: AppState;
-  dispatch: React.Dispatch<AppAction>;
   actions: {
     loadProjects: () => Promise<void>;
+    loadTasks: () => Promise<void>;
     createProject: (name: string) => Promise<void>;
-    selectProject: (project: Project) => Promise<void>;
+    updateProject: (project: Project) => Promise<void>;
     deleteProject: (id: string) => Promise<void>;
-    createTask: (task: Omit<Task, 'id' | 'createdAt'>) => Promise<void>;
+    selectProject: (project: Project) => void;
+    createTask: (taskData: Partial<Task>) => Promise<void>;
     updateTask: (task: Task) => Promise<void>;
     deleteTask: (id: string) => Promise<void>;
-    loadTasks: (projectId: string) => Promise<void>;
-    searchTasks: (query: string) => Promise<void>;
-    moveTaskToProject: (taskId: string, targetProjectId: string) => Promise<void>;
-    createRecurringTask: (originalTask: Task) => Promise<void>;
+    searchTasks: (query: string) => void;
+    moveTaskToProject: (taskId: string, projectId: string) => Promise<void>;
+    createRecurringTask: (task: Task) => Promise<void>;
+    reorderProjects: (projectIds: string[]) => Promise<void>;
   };
 }
 
-// Create the context
-const AppContext = createContext<AppContextType | undefined>(undefined);
+const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const { toast } = useToast();
 
-  const handleError = (error: Error, operation: string) => {
-    console.error(`Error during ${operation}:`, error);
-    toast({
-      title: "Ошибка сохранения",
-      description: "Проверьте память браузера. Изменения могут быть потеряны.",
-      variant: "destructive",
-    });
-  };
-
   const actions = {
     loadProjects: async () => {
-      dispatch({ type: 'SET_LOADING', payload: true });
       try {
+        dispatch({ type: 'SET_LOADING', payload: true });
         const projects = await storageService.getAllProjects();
         dispatch({ type: 'SET_PROJECTS', payload: projects });
         
-        if (projects.length > 0 && !state.currentProject) {
-          await actions.selectProject(projects[0]);
+        // Автоматически выбираем первый проект, если нет текущего
+        if (!state.currentProject && projects.length > 0) {
+          dispatch({ type: 'SET_CURRENT_PROJECT', payload: projects[0] });
         }
       } catch (error) {
-        handleError(error as Error, 'loading projects');
+        console.error('Failed to load projects:', error);
+        toast({
+          title: 'Ошибка',
+          description: 'Не удалось загрузить проекты',
+          variant: 'destructive'
+        });
       } finally {
         dispatch({ type: 'SET_LOADING', payload: false });
+      }
+    },
+
+    loadTasks: async () => {
+      if (!state.currentProject) return;
+      
+      try {
+        const tasks = await storageService.getTasksByProject(state.currentProject.id);
+        dispatch({ type: 'SET_TASKS', payload: tasks });
+      } catch (error) {
+        console.error('Failed to load tasks:', error);
+        toast({
+          title: 'Ошибка',
+          description: 'Не удалось загрузить задачи',
+          variant: 'destructive'
+        });
       }
     },
 
@@ -132,42 +153,92 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           id: crypto.randomUUID(),
           name,
           createdAt: new Date().toISOString(),
+          order: state.projects.length,
         };
         
         await storageService.saveProject(project);
         dispatch({ type: 'ADD_PROJECT', payload: project });
-        await actions.selectProject(project);
+        dispatch({ type: 'SET_CURRENT_PROJECT', payload: project });
+        
+        toast({
+          title: 'Проект создан',
+          description: `Проект "${name}" успешно создан`,
+        });
       } catch (error) {
-        handleError(error as Error, 'creating project');
+        console.error('Failed to create project:', error);
+        toast({
+          title: 'Ошибка',
+          description: 'Не удалось создать проект',
+          variant: 'destructive'
+        });
       }
     },
 
-    selectProject: async (project: Project) => {
-      dispatch({ type: 'SET_CURRENT_PROJECT', payload: project });
-      await actions.loadTasks(project.id);
+    updateProject: async (project: Project) => {
+      try {
+        await storageService.saveProject(project);
+        dispatch({ type: 'UPDATE_PROJECT', payload: project });
+      } catch (error) {
+        console.error('Failed to update project:', error);
+        toast({
+          title: 'Ошибка',
+          description: 'Не удалось обновить проект',
+          variant: 'destructive'
+        });
+      }
     },
 
     deleteProject: async (id: string) => {
       try {
         await storageService.deleteProject(id);
         dispatch({ type: 'DELETE_PROJECT', payload: id });
+        
+        toast({
+          title: 'Проект удален',
+          description: 'Проект и все связанные задачи удалены',
+        });
       } catch (error) {
-        handleError(error as Error, 'deleting project');
+        console.error('Failed to delete project:', error);
+        toast({
+          title: 'Ошибка',
+          description: 'Не удалось удалить проект',
+          variant: 'destructive'
+        });
       }
     },
 
-    createTask: async (taskData: Omit<Task, 'id' | 'createdAt'>) => {
+    selectProject: (project: Project) => {
+      dispatch({ type: 'SET_CURRENT_PROJECT', payload: project });
+    },
+
+    createTask: async (taskData: Partial<Task>) => {
+      if (!state.currentProject) return;
+      
       try {
         const task: Task = {
-          ...taskData,
           id: crypto.randomUUID(),
+          title: taskData.title || '',
+          description: taskData.description,
+          completed: false,
           createdAt: new Date().toISOString(),
+          deadline: taskData.deadline,
+          deadlineTime: taskData.deadlineTime,
+          quadrant: taskData.quadrant || 'not-urgent-not-important',
+          projectId: state.currentProject.id,
+          order: state.tasks.length,
+          isRecurring: taskData.isRecurring,
+          recurrencePattern: taskData.recurrencePattern,
         };
         
         await storageService.saveTask(task);
         dispatch({ type: 'ADD_TASK', payload: task });
       } catch (error) {
-        handleError(error as Error, 'creating task');
+        console.error('Failed to create task:', error);
+        toast({
+          title: 'Ошибка',
+          description: 'Не удалось создать задачу',
+          variant: 'destructive'
+        });
       }
     },
 
@@ -176,7 +247,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         await storageService.saveTask(task);
         dispatch({ type: 'UPDATE_TASK', payload: task });
       } catch (error) {
-        handleError(error as Error, 'updating task');
+        console.error('Failed to update task:', error);
+        toast({
+          title: 'Ошибка',
+          description: 'Не удалось обновить задачу',
+          variant: 'destructive'
+        });
       }
     },
 
@@ -185,89 +261,90 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         await storageService.deleteTask(id);
         dispatch({ type: 'DELETE_TASK', payload: id });
       } catch (error) {
-        handleError(error as Error, 'deleting task');
+        console.error('Failed to delete task:', error);
+        toast({
+          title: 'Ошибка',
+          description: 'Не удалось удалить задачу',
+          variant: 'destructive'
+        });
       }
     },
 
-    loadTasks: async (projectId: string) => {
-      try {
-        const tasks = await storageService.getTasksByProject(projectId);
-        dispatch({ type: 'SET_TASKS', payload: tasks });
-      } catch (error) {
-        handleError(error as Error, 'loading tasks');
-      }
-    },
-
-    searchTasks: async (query: string) => {
+    searchTasks: (query: string) => {
       dispatch({ type: 'SET_SEARCH_QUERY', payload: query });
-      try {
-        if (query.trim()) {
-          const tasks = await storageService.searchTasks(query, state.currentProject?.id);
-          dispatch({ type: 'SET_TASKS', payload: tasks });
-        } else if (state.currentProject) {
-          await actions.loadTasks(state.currentProject.id);
-        }
-      } catch (error) {
-        handleError(error as Error, 'searching tasks');
-      }
     },
 
-    moveTaskToProject: async (taskId: string, targetProjectId: string) => {
+    moveTaskToProject: async (taskId: string, projectId: string) => {
       try {
-        const task = state.tasks.find(t => t.id === taskId);
+        const task = await storageService.getTask(taskId);
         if (task) {
-          const updatedTask = { ...task, projectId: targetProjectId };
+          const updatedTask = { ...task, projectId };
           await storageService.saveTask(updatedTask);
-          dispatch({ type: 'DELETE_TASK', payload: taskId });
+          dispatch({ type: 'UPDATE_TASK', payload: updatedTask });
+          
+          toast({
+            title: 'Задача перемещена',
+            description: 'Задача успешно перемещена в другой проект',
+          });
         }
       } catch (error) {
-        handleError(error as Error, 'moving task');
+        console.error('Failed to move task:', error);
+        toast({
+          title: 'Ошибка',
+          description: 'Не удалось переместить задачу',
+          variant: 'destructive'
+        });
       }
     },
 
-    createRecurringTask: async (originalTask: Task) => {
+    createRecurringTask: async (task: Task) => {
       try {
-        const newTask = await storageService.createRecurringTask(originalTask);
-        if (state.currentProject?.id === newTask.projectId) {
-          dispatch({ type: 'ADD_TASK', payload: newTask });
-        }
+        const newTask = await storageService.createRecurringTask(task);
+        dispatch({ type: 'ADD_TASK', payload: newTask });
+        
+        toast({
+          title: 'Повторяющаяся задача создана',
+          description: 'Новая задача создана согласно расписанию',
+        });
       } catch (error) {
-        handleError(error as Error, 'creating recurring task');
+        console.error('Failed to create recurring task:', error);
+        toast({
+          title: 'Ошибка',
+          description: 'Не удалось создать повторяющуюся задачу',
+          variant: 'destructive'
+        });
+      }
+    },
+
+    reorderProjects: async (projectIds: string[]) => {
+      try {
+        for (let i = 0; i < projectIds.length; i++) {
+          await storageService.updateProjectOrder(projectIds[i], i);
+        }
+        await actions.loadProjects();
+      } catch (error) {
+        console.error('Failed to reorder projects:', error);
+        toast({
+          title: 'Ошибка',
+          description: 'Не удалось изменить порядок проектов',
+          variant: 'destructive'
+        });
       }
     },
   };
-
-  // Auto-cleanup completed tasks at midnight Moscow time
-  useEffect(() => {
-    const checkAndCleanup = async () => {
-      const now = new Date();
-      const moscowTime = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Moscow"}));
-      
-      if (moscowTime.getHours() === 0 && moscowTime.getMinutes() === 0) {
-        try {
-          const completedTasks = state.tasks.filter(task => task.completed);
-          for (const task of completedTasks) {
-            await storageService.deleteTask(task.id);
-          }
-          if (state.currentProject) {
-            await actions.loadTasks(state.currentProject.id);
-          }
-        } catch (error) {
-          handleError(error as Error, 'auto-cleanup');
-        }
-      }
-    };
-
-    const interval = setInterval(checkAndCleanup, 60000); // Check every minute
-    return () => clearInterval(interval);
-  }, [state.tasks, state.currentProject]);
 
   useEffect(() => {
     actions.loadProjects();
   }, []);
 
+  useEffect(() => {
+    if (state.currentProject) {
+      actions.loadTasks();
+    }
+  }, [state.currentProject]);
+
   return (
-    <AppContext.Provider value={{ state, dispatch, actions }}>
+    <AppContext.Provider value={{ state, actions }}>
       {children}
     </AppContext.Provider>
   );

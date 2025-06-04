@@ -1,226 +1,234 @@
 
 import React, { useState, useEffect } from 'react';
 import { Task, Project, storageService } from '../services/StorageService';
+import { useApp } from '../contexts/AppContext';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Archive, RotateCcw, Trash2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { RotateCcw, Trash2 } from 'lucide-react';
+import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 
-interface ArchiveViewProps {
-  onClose: () => void;
-}
-
-export function ArchiveView({ onClose }: ArchiveViewProps) {
+export function ArchiveView() {
+  const { actions } = useApp();
+  const { toast } = useToast();
   const [archivedTasks, setArchivedTasks] = useState<Task[]>([]);
   const [archivedProjects, setArchivedProjects] = useState<Project[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadArchivedData = async () => {
-      try {
-        const [tasks, projects] = await Promise.all([
-          storageService.getArchivedTasks(),
-          storageService.getArchivedProjects()
-        ]);
-        setArchivedTasks(tasks);
-        setArchivedProjects(projects);
-      } catch (error) {
-        console.error('Error loading archived data:', error);
-        toast({
-          title: "Ошибка загрузки",
-          description: "Не удалось загрузить архивные данные",
-          variant: "destructive",
-        });
-      }
-    };
-
     loadArchivedData();
-  }, [toast]);
+  }, []);
 
-  const filteredTasks = archivedTasks.filter(task =>
-    task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    task.description?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const filteredProjects = archivedProjects.filter(project =>
-    project.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const handleRestoreProject = async (id: string) => {
+  const loadArchivedData = async () => {
     try {
-      await storageService.restoreProject(id);
-      setArchivedProjects(prev => prev.filter(p => p.id !== id));
+      const [tasks, projects] = await Promise.all([
+        storageService.getArchivedTasks(),
+        storageService.getArchivedProjects()
+      ]);
+      setArchivedTasks(tasks);
+      setArchivedProjects(projects);
+    } catch (error) {
+      console.error('Failed to load archived data:', error);
       toast({
-        title: "Проект восстановлен",
-        description: "Проект успешно восстановлен из архива",
+        title: 'Ошибка',
+        description: 'Не удалось загрузить архивные данные',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRestoreProject = async (projectId: string) => {
+    try {
+      await storageService.restoreProject(projectId);
+      await actions.loadProjects();
+      await loadArchivedData();
+      toast({
+        title: 'Проект восстановлен',
+        description: 'Проект успешно перемещен из архива'
       });
     } catch (error) {
-      console.error('Error restoring project:', error);
+      console.error('Failed to restore project:', error);
       toast({
-        title: "Ошибка восстановления",
-        description: "Не удалось восстановить проект",
-        variant: "destructive",
+        title: 'Ошибка',
+        description: 'Не удалось восстановить проект',
+        variant: 'destructive'
       });
     }
   };
 
-  const handleRestoreTask = async (id: string) => {
+  const handleRestoreTask = async (taskId: string) => {
     try {
-      await storageService.restoreTask(id);
-      setArchivedTasks(prev => prev.filter(t => t.id !== id));
+      await storageService.restoreTask(taskId);
+      await actions.loadTasks();
+      await loadArchivedData();
       toast({
-        title: "Задача восстановлена",
-        description: "Задача успешно восстановлена из архива",
+        title: 'Задача восстановлена',
+        description: 'Задача успешно перемещена из архива'
       });
     } catch (error) {
-      console.error('Error restoring task:', error);
+      console.error('Failed to restore task:', error);
       toast({
-        title: "Ошибка восстановления",
-        description: "Не удалось восстановить задачу",
-        variant: "destructive",
+        title: 'Ошибка',
+        description: 'Не удалось восстановить задачу',
+        variant: 'destructive'
       });
     }
   };
 
-  const handleDeleteProject = async (id: string) => {
+  const handleDeleteProject = async (projectId: string) => {
+    if (!confirm('Окончательно удалить проект? Это действие нельзя отменить.')) {
+      return;
+    }
+
     try {
-      await storageService.deleteProject(id);
-      setArchivedProjects(prev => prev.filter(p => p.id !== id));
+      await storageService.deleteProject(projectId);
+      await loadArchivedData();
       toast({
-        title: "Проект удален",
-        description: "Проект окончательно удален",
+        title: 'Проект удален',
+        description: 'Проект окончательно удален'
       });
     } catch (error) {
-      console.error('Error deleting project:', error);
+      console.error('Failed to delete project:', error);
       toast({
-        title: "Ошибка удаления",
-        description: "Не удалось удалить проект",
-        variant: "destructive",
+        title: 'Ошибка',
+        description: 'Не удалось удалить проект',
+        variant: 'destructive'
       });
     }
   };
 
-  const handleDeleteTask = async (id: string) => {
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm('Окончательно удалить задачу? Это действие нельзя отменить.')) {
+      return;
+    }
+
     try {
-      await storageService.deleteTask(id);
-      setArchivedTasks(prev => prev.filter(t => t.id !== id));
+      await storageService.deleteTask(taskId);
+      await loadArchivedData();
       toast({
-        title: "Задача удалена",
-        description: "Задача окончательно удалена",
+        title: 'Задача удалена',
+        description: 'Задача окончательно удалена'
       });
     } catch (error) {
-      console.error('Error deleting task:', error);
+      console.error('Failed to delete task:', error);
       toast({
-        title: "Ошибка удаления",
-        description: "Не удалось удалить задачу",
-        variant: "destructive",
+        title: 'Ошибка',
+        description: 'Не удалось удалить задачу',
+        variant: 'destructive'
       });
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-gray-500">Загрузка архива...</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-background rounded-lg shadow-xl w-full max-w-4xl h-3/4 flex flex-col border">
-        <div className="flex items-center justify-between p-4 border-b">
-          <div className="flex items-center gap-2">
-            <Archive className="h-5 w-5" />
-            <h2 className="text-lg font-semibold">Архив</h2>
-          </div>
-          <Button variant="ghost" onClick={onClose}>
-            ✕
-          </Button>
-        </div>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Архив</h1>
+      </div>
 
-        <div className="p-4">
-          <Input
-            placeholder="Поиск в архиве..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full"
-          />
-        </div>
+      <Tabs defaultValue="tasks" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="tasks">Задачи ({archivedTasks.length})</TabsTrigger>
+          <TabsTrigger value="projects">Проекты ({archivedProjects.length})</TabsTrigger>
+        </TabsList>
 
-        <div className="flex-1 overflow-auto p-4 space-y-6">
-          {filteredProjects.length > 0 && (
-            <div>
-              <h3 className="text-md font-medium mb-3">Архивированные проекты</h3>
-              <div className="space-y-2">
-                {filteredProjects.map((project) => (
-                  <div
-                    key={project.id}
-                    className="flex items-center justify-between p-3 bg-muted rounded-lg"
-                  >
-                    <span className="font-medium">{project.name}</span>
-                    <div className="flex gap-2">
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => handleRestoreProject(project.id)}
-                      >
-                        <RotateCcw className="h-4 w-4 mr-1" />
-                        Восстановить
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="destructive"
-                        onClick={() => handleDeleteProject(project.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+        <TabsContent value="tasks" className="space-y-3">
+          {archivedTasks.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <p>Нет архивных задач</p>
             </div>
-          )}
-
-          {filteredTasks.length > 0 && (
-            <div>
-              <h3 className="text-md font-medium mb-3">Архивированные задачи</h3>
-              <div className="space-y-2">
-                {filteredTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="flex items-center justify-between p-3 bg-muted rounded-lg"
-                  >
-                    <div>
-                      <h4 className="font-medium">{task.title}</h4>
+          ) : (
+            archivedTasks.map((task) => (
+              <Card key={task.id}>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h3 className="font-medium">{task.title}</h3>
                       {task.description && (
-                        <p className="text-sm text-muted-foreground">{task.description}</p>
+                        <p className="text-sm text-gray-600 mt-1">{task.description}</p>
                       )}
+                      <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                        <span>Архивировано: {format(new Date(task.createdAt), 'd MMM yyyy', { locale: ru })}</span>
+                        {task.deadline && (
+                          <span>Срок: {format(new Date(task.deadline), 'd MMM yyyy', { locale: ru })}</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex gap-2">
-                      <Button 
-                        size="sm" 
-                        variant="outline"
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => handleRestoreTask(task.id)}
                       >
-                        <RotateCcw className="h-4 w-4 mr-1" />
-                        Восстановить
+                        <RotateCcw className="h-4 w-4" />
                       </Button>
-                      <Button 
-                        size="sm" 
-                        variant="destructive"
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => handleDeleteTask(task.id)}
+                        className="text-red-500 hover:text-red-700"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
+                </CardContent>
+              </Card>
+            ))
           )}
+        </TabsContent>
 
-          {filteredTasks.length === 0 && filteredProjects.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground">
-              <Archive className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Архив пуст</p>
+        <TabsContent value="projects" className="space-y-3">
+          {archivedProjects.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <p>Нет архивных проектов</p>
             </div>
+          ) : (
+            archivedProjects.map((project) => (
+              <Card key={project.id}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-medium">{project.name}</h3>
+                      <p className="text-sm text-gray-600">
+                        Создан: {format(new Date(project.createdAt), 'd MMM yyyy', { locale: ru })}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRestoreProject(project.id)}
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteProject(project.id)}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
           )}
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
