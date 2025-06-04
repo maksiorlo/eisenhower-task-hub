@@ -210,11 +210,6 @@ export function MatrixBoard() {
                       <InlineEditableTask
                         task={task}
                         onDragStart={handleDragStart}
-                        onDragEnd={handleDragEnd}
-                        onReorder={(dragIndex, hoverIndex) => 
-                          reorderTasks(quadrant.id, dragIndex, hoverIndex)
-                        }
-                        index={index}
                       />
                     </div>
                   </TaskContextMenu>

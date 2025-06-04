@@ -1,4 +1,11 @@
+
 import localforage from 'localforage';
+
+export interface RecurrencePattern {
+  type: 'daily' | 'weekly' | 'weekdays' | 'weekends' | 'custom';
+  interval?: number;
+  daysOfWeek?: number[];
+}
 
 export interface Task {
   id: string;
@@ -12,6 +19,8 @@ export interface Task {
   projectId: string;
   archived?: boolean;
   order?: number;
+  isRecurring?: boolean;
+  recurrencePattern?: RecurrencePattern;
   recurrence?: {
     pattern: 'daily' | 'weekly' | 'monthly';
     interval: number;
@@ -23,6 +32,8 @@ export interface Project {
   id: string;
   name: string;
   createdAt: string;
+  archived?: boolean;
+  order?: number;
 }
 
 class StorageService {
@@ -50,9 +61,35 @@ class StorageService {
   async getAllProjects(): Promise<Project[]> {
     const projects: Project[] = [];
     await this.projectStore.iterate((value: Project) => {
-      projects.push(value);
+      if (!value.archived) {
+        projects.push(value);
+      }
+    });
+    return projects.sort((a, b) => (a.order || 0) - (b.order || 0));
+  }
+
+  async getArchivedProjects(): Promise<Project[]> {
+    const projects: Project[] = [];
+    await this.projectStore.iterate((value: Project) => {
+      if (value.archived) {
+        projects.push(value);
+      }
     });
     return projects;
+  }
+
+  async archiveProject(id: string): Promise<void> {
+    const project = await this.getProject(id);
+    if (project) {
+      await this.saveProject({ ...project, archived: true });
+    }
+  }
+
+  async restoreProject(id: string): Promise<void> {
+    const project = await this.getProject(id);
+    if (project) {
+      await this.saveProject({ ...project, archived: false });
+    }
   }
 
   async deleteProject(id: string): Promise<void> {
@@ -60,6 +97,13 @@ class StorageService {
     const tasks = await this.getTasksByProject(id);
     for (const task of tasks) {
       await this.deleteTask(task.id);
+    }
+  }
+
+  async updateProjectOrder(projectId: string, newOrder: number): Promise<void> {
+    const project = await this.getProject(projectId);
+    if (project) {
+      await this.saveProject({ ...project, order: newOrder });
     }
   }
 
@@ -75,11 +119,35 @@ class StorageService {
   async getTasksByProject(projectId: string): Promise<Task[]> {
     const tasks: Task[] = [];
     await this.taskStore.iterate((value: Task) => {
-      if (value.projectId === projectId) {
+      if (value.projectId === projectId && !value.archived) {
         tasks.push(value);
       }
     });
     return tasks;
+  }
+
+  async getArchivedTasks(): Promise<Task[]> {
+    const tasks: Task[] = [];
+    await this.taskStore.iterate((value: Task) => {
+      if (value.archived) {
+        tasks.push(value);
+      }
+    });
+    return tasks;
+  }
+
+  async archiveTask(id: string): Promise<void> {
+    const task = await this.getTask(id);
+    if (task) {
+      await this.saveTask({ ...task, archived: true });
+    }
+  }
+
+  async restoreTask(id: string): Promise<void> {
+    const task = await this.getTask(id);
+    if (task) {
+      await this.saveTask({ ...task, archived: false });
+    }
   }
 
   async deleteTask(id: string): Promise<void> {
@@ -93,6 +161,7 @@ class StorageService {
     await this.taskStore.iterate((value: Task) => {
       if (
         (!projectId || value.projectId === projectId) &&
+        !value.archived &&
         (value.title.toLowerCase().includes(lowerCaseQuery) ||
           (value.description && value.description.toLowerCase().includes(lowerCaseQuery)))
       ) {
