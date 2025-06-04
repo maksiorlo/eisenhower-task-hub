@@ -1,8 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { StorageService } from '../services/StorageService';
-import { Task, Project } from '../services/StorageService';
+import { storageService, Task, Project } from '../services/StorageService';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -28,8 +26,8 @@ export function ArchiveView({ onClose }: ArchiveViewProps) {
 
   const loadArchivedItems = async () => {
     try {
-      const tasks = await StorageService.getArchivedTasks();
-      const projects = await StorageService.getArchivedProjects();
+      const tasks = await storageService.getArchivedTasks();
+      const projects = await storageService.getArchivedProjects();
       setArchivedTasks(tasks);
       setArchivedProjects(projects);
     } catch (error) {
@@ -46,7 +44,7 @@ export function ArchiveView({ onClose }: ArchiveViewProps) {
 
   const handleRestoreProject = async (project: Project) => {
     try {
-      await StorageService.restoreProject(project.id);
+      await storageService.restoreProject(project.id);
       await actions.loadProjects();
       await loadArchivedItems();
       toast({
@@ -65,7 +63,7 @@ export function ArchiveView({ onClose }: ArchiveViewProps) {
 
   const handleRestoreTask = async (task: Task) => {
     try {
-      await StorageService.restoreTask(task.id);
+      await storageService.restoreTask(task.id);
       await actions.loadTasks();
       await loadArchivedItems();
       toast({
@@ -85,9 +83,9 @@ export function ArchiveView({ onClose }: ArchiveViewProps) {
   const handlePermanentDelete = async (type: 'task' | 'project', id: string) => {
     try {
       if (type === 'task') {
-        await StorageService.permanentDeleteTask(id);
+        await storageService.permanentDeleteTask(id);
       } else {
-        await StorageService.permanentDeleteProject(id);
+        await storageService.permanentDeleteProject(id);
       }
       await loadArchivedItems();
       toast({
@@ -104,12 +102,12 @@ export function ArchiveView({ onClose }: ArchiveViewProps) {
     }
   };
 
-  const getQuadrantName = (quadrant: number) => {
+  const getQuadrantName = (quadrant: string) => {
     switch (quadrant) {
-      case 1: return 'Важное и срочное';
-      case 2: return 'Важное, не срочное';
-      case 3: return 'Не важное, срочное';
-      case 4: return 'Не важное, не срочное';
+      case 'urgent-important': return 'Важное и срочное';
+      case 'important-not-urgent': return 'Важное, не срочное';
+      case 'urgent-not-important': return 'Не важное, срочное';
+      case 'not-urgent-not-important': return 'Не важное, не срочное';
       default: return 'Неопределено';
     }
   };
