@@ -100,6 +100,20 @@ class StorageService {
     }
   }
 
+  async permanentDeleteProject(id: string): Promise<void> {
+    await this.projectStore.removeItem(id);
+    // Also permanently delete all tasks in this project
+    const allTasks: Task[] = [];
+    await this.taskStore.iterate((value: Task) => {
+      if (value.projectId === id) {
+        allTasks.push(value);
+      }
+    });
+    for (const task of allTasks) {
+      await this.taskStore.removeItem(task.id);
+    }
+  }
+
   async updateProjectOrder(projectId: string, newOrder: number): Promise<void> {
     const project = await this.getProject(projectId);
     if (project) {
@@ -151,6 +165,10 @@ class StorageService {
   }
 
   async deleteTask(id: string): Promise<void> {
+    await this.taskStore.removeItem(id);
+  }
+
+  async permanentDeleteTask(id: string): Promise<void> {
     await this.taskStore.removeItem(id);
   }
 
