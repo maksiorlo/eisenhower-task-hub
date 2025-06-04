@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useUndo } from '../contexts/UndoContext';
 import { ArchiveView } from './ArchiveView';
+import { ProjectContextMenu } from './ProjectContextMenu';
 import { ThemeToggle } from './ThemeToggle';
 import {
   Sidebar,
@@ -60,6 +61,7 @@ export function AppSidebar() {
       toast({
         title: "Проект удалён",
         description: "Нажмите Cmd+Z для отмены",
+        duration: 10000,
         action: (
           <Button
             variant="outline"
@@ -153,8 +155,8 @@ export function AppSidebar() {
     setDragOverArchive(false);
     
     if (projectId && draggedProject) {
-      // Archive project logic
-      await handleDeleteProject(projectId);
+      // Archive project instead of deleting
+      await actions.archiveProject(projectId);
     }
   };
 
@@ -204,40 +206,44 @@ export function AppSidebar() {
                 
                 {state.projects.map((project) => (
                   <SidebarMenuItem key={project.id}>
-                    <div
-                      className={`flex items-center justify-between w-full group cursor-move transition-colors ${
-                        dragOverProject === project.id ? 'bg-blue-50 dark:bg-blue-900/20' : ''
-                      }`}
-                      draggable
-                      onDragStart={(e) => handleProjectDragStart(e, project.id)}
-                      onDragEnd={handleProjectDragEnd}
-                      onDragOver={(e) => {
-                        handleTaskDragOver(e, project.id);
-                        handleProjectDragOver(e, project.id);
-                      }}
-                      onDragLeave={handleTaskDragLeave}
-                      onDrop={(e) => {
-                        handleTaskDrop(e, project.id);
-                        handleProjectDrop(e, project.id);
-                      }}
-                    >
-                      <SidebarMenuButton
-                        isActive={state.currentProject?.id === project.id}
-                        onClick={() => actions.selectProject(project)}
-                        className="flex-1"
+                    <ProjectContextMenu project={project}>
+                      <div
+                        className={`flex items-center justify-between w-full group cursor-move transition-colors ${
+                          dragOverProject === project.id ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+                        }`}
+                        draggable
+                        onDragStart={(e) => handleProjectDragStart(e, project.id)}
+                        onDragEnd={handleProjectDragEnd}
+                        onDragOver={(e) => {
+                          handleTaskDragOver(e, project.id);
+                          handleProjectDragOver(e, project.id);
+                        }}
+                        onDragLeave={handleTaskDragLeave}
+                        onDrop={(e) => {
+                          handleTaskDrop(e, project.id);
+                          handleProjectDrop(e, project.id);
+                        }}
                       >
-                        <span className="truncate">{project.name}</span>
-                      </SidebarMenuButton>
-                      
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteProject(project.id)}
-                        className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
+                        <SidebarMenuButton
+                          isActive={state.currentProject?.id === project.id}
+                          onClick={() => actions.selectProject(project)}
+                          className="flex-1 min-w-0"
+                        >
+                          <span className="truncate text-left whitespace-normal break-words leading-tight">
+                            {project.name}
+                          </span>
+                        </SidebarMenuButton>
+                        
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteProject(project.id)}
+                          className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </ProjectContextMenu>
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>

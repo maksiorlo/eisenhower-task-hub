@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { TimeInput } from './TimeInput';
 import { Trash2, Calendar, Clock, Repeat } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
@@ -216,13 +217,15 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
             </Popover>
 
             {task.deadline && (
-              <Input
-                type="time"
-                value={task.deadlineTime || ''}
-                onChange={(e) => handleTimeUpdate(e.target.value)}
-                className="h-6 w-16 text-xs px-1"
-                placeholder="Время"
-              />
+              <div className="flex items-center gap-1">
+                <Clock className="h-3 w-3 text-gray-400" />
+                <TimeInput
+                  value={task.deadlineTime || ''}
+                  onChange={handleTimeUpdate}
+                  className="h-6 w-20 text-xs px-2 border-0 bg-transparent focus:bg-white focus:border"
+                  placeholder="00:00"
+                />
+              </div>
             )}
 
             <Popover open={isRecurrenceOpen} onOpenChange={setIsRecurrenceOpen}>

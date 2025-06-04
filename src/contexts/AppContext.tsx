@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { Task, Project, storageService } from '../services/StorageService';
 import { useToast } from '@/hooks/use-toast';
@@ -91,6 +90,7 @@ interface AppContextType {
     createProject: (name: string) => Promise<void>;
     updateProject: (project: Project) => Promise<void>;
     deleteProject: (id: string) => Promise<void>;
+    archiveProject: (id: string) => Promise<void>;
     selectProject: (project: Project) => void;
     createTask: (taskData: Partial<Task>) => Promise<void>;
     updateTask: (task: Task) => Promise<void>;
@@ -163,13 +163,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         toast({
           title: 'Проект создан',
           description: `Проект "${name}" успешно создан`,
+          duration: 10000,
         });
       } catch (error) {
         console.error('Failed to create project:', error);
         toast({
           title: 'Ошибка',
           description: 'Не удалось создать проект',
-          variant: 'destructive'
+          variant: 'destructive',
+          duration: 10000,
         });
       }
     },
@@ -183,7 +185,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         toast({
           title: 'Ошибка',
           description: 'Не удалось обновить проект',
-          variant: 'destructive'
+          variant: 'destructive',
+          duration: 10000,
         });
       }
     },
@@ -196,13 +199,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         toast({
           title: 'Проект удален',
           description: 'Проект и все связанные задачи удалены',
+          duration: 10000,
         });
       } catch (error) {
         console.error('Failed to delete project:', error);
         toast({
           title: 'Ошибка',
           description: 'Не удалось удалить проект',
-          variant: 'destructive'
+          variant: 'destructive',
+          duration: 10000,
+        });
+      }
+    },
+
+    archiveProject: async (id: string) => {
+      try {
+        await storageService.archiveProject(id);
+        dispatch({ type: 'DELETE_PROJECT', payload: id });
+        
+        toast({
+          title: 'Проект архивирован',
+          description: 'Проект перемещен в архив',
+          duration: 10000,
+        });
+      } catch (error) {
+        console.error('Failed to archive project:', error);
+        toast({
+          title: 'Ошибка',
+          description: 'Не удалось архивировать проект',
+          variant: 'destructive',
+          duration: 10000,
         });
       }
     },
@@ -237,7 +263,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         toast({
           title: 'Ошибка',
           description: 'Не удалось создать задачу',
-          variant: 'destructive'
+          variant: 'destructive',
+          duration: 10000,
         });
       }
     },
@@ -246,12 +273,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try {
         await storageService.saveTask(task);
         dispatch({ type: 'UPDATE_TASK', payload: task });
+        
+        // Если задача архивирована, убрать её из текущего списка
+        if (task.archived) {
+          dispatch({ type: 'DELETE_TASK', payload: task.id });
+        }
       } catch (error) {
         console.error('Failed to update task:', error);
         toast({
           title: 'Ошибка',
           description: 'Не удалось обновить задачу',
-          variant: 'destructive'
+          variant: 'destructive',
+          duration: 10000,
         });
       }
     },
@@ -265,7 +298,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         toast({
           title: 'Ошибка',
           description: 'Не удалось удалить задачу',
-          variant: 'destructive'
+          variant: 'destructive',
+          duration: 10000,
         });
       }
     },
@@ -280,11 +314,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (task) {
           const updatedTask = { ...task, projectId };
           await storageService.saveTask(updatedTask);
-          dispatch({ type: 'UPDATE_TASK', payload: updatedTask });
+          
+          // Удаляем задачу из текущего списка
+          dispatch({ type: 'DELETE_TASK', payload: taskId });
           
           toast({
             title: 'Задача перемещена',
             description: 'Задача успешно перемещена в другой проект',
+            duration: 10000,
           });
         }
       } catch (error) {
@@ -292,7 +329,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         toast({
           title: 'Ошибка',
           description: 'Не удалось переместить задачу',
-          variant: 'destructive'
+          variant: 'destructive',
+          duration: 10000,
         });
       }
     },
@@ -305,13 +343,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         toast({
           title: 'Повторяющаяся задача создана',
           description: 'Новая задача создана согласно расписанию',
+          duration: 10000,
         });
       } catch (error) {
         console.error('Failed to create recurring task:', error);
         toast({
           title: 'Ошибка',
           description: 'Не удалось создать повторяющуюся задачу',
-          variant: 'destructive'
+          variant: 'destructive',
+          duration: 10000,
         });
       }
     },
@@ -327,7 +367,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         toast({
           title: 'Ошибка',
           description: 'Не удалось изменить порядок проектов',
-          variant: 'destructive'
+          variant: 'destructive',
+          duration: 10000,
         });
       }
     },
