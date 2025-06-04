@@ -8,35 +8,6 @@ interface RecurrencePattern {
   daysOfWeek?: number[];
 }
 
-export interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  completed: boolean;
-  createdAt: string;
-  deadline?: string;
-  deadlineTime?: string;
-  quadrant: 'urgent-important' | 'important-not-urgent' | 'urgent-not-important' | 'not-urgent-not-important';
-  projectId: string;
-  archived?: boolean;
-  order?: number;
-  isRecurring?: boolean;
-  recurrencePattern?: RecurrencePattern;
-  recurrence?: {
-    pattern: 'daily' | 'weekly' | 'monthly';
-    interval: number;
-    endDate?: string;
-  };
-}
-
-export interface Project {
-  id: string;
-  name: string;
-  createdAt: string;
-  archived?: boolean;
-  order?: number;
-}
-
 interface AppState {
   tasks: Task[];
   projects: Project[];
