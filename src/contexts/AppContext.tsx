@@ -2,387 +2,281 @@ import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { Task, Project, storageService } from '../services/StorageService';
 import { useToast } from '@/hooks/use-toast';
 
-interface AppState {
-  projects: Project[];
-  tasks: Task[];
-  currentProject: Project | null;
-  searchQuery: string;
-  isLoading: boolean;
+interface RecurrencePattern {
+  type: 'daily' | 'weekly' | 'weekdays' | 'weekends' | 'custom';
+  interval?: number;
+  daysOfWeek?: number[];
 }
 
+export interface Task {
+  id: string;
+  title: string;
+  description?: string;
+  completed: boolean;
+  createdAt: string;
+  deadline?: string;
+  deadlineTime?: string;
+  quadrant: 'urgent-important' | 'important-not-urgent' | 'urgent-not-important' | 'not-urgent-not-important';
+  projectId: string;
+  archived?: boolean;
+  order?: number;
+  isRecurring?: boolean;
+  recurrencePattern?: RecurrencePattern;
+  recurrence?: {
+    pattern: 'daily' | 'weekly' | 'monthly';
+    interval: number;
+    endDate?: string;
+  };
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  createdAt: string;
+  archived?: boolean;
+  order?: number;
+}
+
+interface AppState {
+  tasks: Task[];
+  projects: Project[];
+  currentProject: Project | null;
+  loading: boolean;
+}
+
+interface AppActions {
+  createTask: (task: Omit<Task, 'id' | 'createdAt'>) => Promise<void>;
+  updateTask: (task: Task) => Promise<void>;
+  deleteTask: (id: string) => Promise<void>;
+  createProject: (name: string) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
+  archiveProject: (id: string) => Promise<void>;
+  selectProject: (project: Project) => void;
+  loadData: () => Promise<void>;
+  moveTaskToProject: (taskId: string, projectId: string) => Promise<void>;
+  createRecurringTask: (originalTask: Task) => Promise<void>;
+}
+
+interface AppContextType {
+  state: AppState;
+  actions: AppActions;
+}
+
+const AppContext = createContext<AppContextType | null>(null);
+
 type AppAction =
-  | { type: 'SET_PROJECTS'; payload: Project[] }
-  | { type: 'SET_TASKS'; payload: Task[] }
-  | { type: 'SET_CURRENT_PROJECT'; payload: Project | null }
-  | { type: 'SET_SEARCH_QUERY'; payload: string }
   | { type: 'SET_LOADING'; payload: boolean }
-  | { type: 'ADD_PROJECT'; payload: Project }
-  | { type: 'UPDATE_PROJECT'; payload: Project }
-  | { type: 'DELETE_PROJECT'; payload: string }
+  | { type: 'SET_TASKS'; payload: Task[] }
+  | { type: 'SET_PROJECTS'; payload: Project[] }
+  | { type: 'SELECT_PROJECT'; payload: Project | null }
   | { type: 'ADD_TASK'; payload: Task }
   | { type: 'UPDATE_TASK'; payload: Task }
-  | { type: 'DELETE_TASK'; payload: string };
-
-const initialState: AppState = {
-  projects: [],
-  tasks: [],
-  currentProject: null,
-  searchQuery: '',
-  isLoading: false,
-};
+  | { type: 'DELETE_TASK'; payload: string }
+  | { type: 'ADD_PROJECT'; payload: Project }
+  | { type: 'DELETE_PROJECT'; payload: string }
+  | { type: 'UPDATE_PROJECT'; payload: Project };
 
 function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
-    case 'SET_PROJECTS':
-      return { ...state, projects: action.payload };
+    case 'SET_LOADING':
+      return { ...state, loading: action.payload };
     case 'SET_TASKS':
       return { ...state, tasks: action.payload };
-    case 'SET_CURRENT_PROJECT':
+    case 'SET_PROJECTS':
+      return { ...state, projects: action.payload };
+    case 'SELECT_PROJECT':
       return { ...state, currentProject: action.payload };
-    case 'SET_SEARCH_QUERY':
-      return { ...state, searchQuery: action.payload };
-    case 'SET_LOADING':
-      return { ...state, isLoading: action.payload };
-    case 'ADD_PROJECT':
-      return { ...state, projects: [...state.projects, action.payload] };
-    case 'UPDATE_PROJECT':
-      return {
-        ...state,
-        projects: state.projects.map(p => 
-          p.id === action.payload.id ? action.payload : p
-        ),
-        currentProject: state.currentProject?.id === action.payload.id 
-          ? action.payload 
-          : state.currentProject
-      };
-    case 'DELETE_PROJECT':
-      return {
-        ...state,
-        projects: state.projects.filter(p => p.id !== action.payload),
-        currentProject: state.currentProject?.id === action.payload 
-          ? null 
-          : state.currentProject
-      };
     case 'ADD_TASK':
       return { ...state, tasks: [...state.tasks, action.payload] };
     case 'UPDATE_TASK':
       return {
         ...state,
-        tasks: state.tasks.map(t => 
-          t.id === action.payload.id ? action.payload : t
-        )
+        tasks: state.tasks.map(task =>
+          task.id === action.payload.id ? action.payload : task
+        ),
       };
     case 'DELETE_TASK':
       return {
         ...state,
-        tasks: state.tasks.filter(t => t.id !== action.payload)
+        tasks: state.tasks.filter(task => task.id !== action.payload),
+      };
+    case 'ADD_PROJECT':
+      return { ...state, projects: [...state.projects, action.payload] };
+    case 'DELETE_PROJECT':
+      return {
+        ...state,
+        projects: state.projects.filter(project => project.id !== action.payload),
+        currentProject: state.currentProject?.id === action.payload ? null : state.currentProject,
+      };
+    case 'UPDATE_PROJECT':
+      return {
+        ...state,
+        projects: state.projects.map(project =>
+          project.id === action.payload.id ? action.payload : project
+        ),
       };
     default:
       return state;
   }
 }
 
-interface AppContextType {
-  state: AppState;
-  actions: {
-    loadProjects: () => Promise<void>;
-    loadTasks: () => Promise<void>;
-    createProject: (name: string) => Promise<void>;
-    updateProject: (project: Project) => Promise<void>;
-    deleteProject: (id: string) => Promise<void>;
-    archiveProject: (id: string) => Promise<void>;
-    selectProject: (project: Project) => void;
-    createTask: (taskData: Partial<Task>) => Promise<void>;
-    updateTask: (task: Task) => Promise<void>;
-    deleteTask: (id: string) => Promise<void>;
-    searchTasks: (query: string) => void;
-    moveTaskToProject: (taskId: string, projectId: string) => Promise<void>;
-    createRecurringTask: (task: Task) => Promise<void>;
-    reorderProjects: (projectIds: string[]) => Promise<void>;
-  };
-}
-
-const AppContext = createContext<AppContextType | null>(null);
-
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(appReducer, initialState);
+  const [state, dispatch] = useReducer(appReducer, {
+    tasks: [],
+    projects: [],
+    currentProject: null,
+    loading: true,
+  });
+
   const { toast } = useToast();
 
-  const actions = {
-    loadProjects: async () => {
-      try {
-        dispatch({ type: 'SET_LOADING', payload: true });
-        const projects = await storageService.getAllProjects();
-        dispatch({ type: 'SET_PROJECTS', payload: projects });
-        
-        // Автоматически выбираем первый проект, если нет текущего
-        if (!state.currentProject && projects.length > 0) {
-          dispatch({ type: 'SET_CURRENT_PROJECT', payload: projects[0] });
-        }
-      } catch (error) {
-        console.error('Failed to load projects:', error);
-        toast({
-          title: 'Ошибка',
-          description: 'Не удалось загрузить проекты',
-          variant: 'destructive'
-        });
-      } finally {
-        dispatch({ type: 'SET_LOADING', payload: false });
-      }
-    },
-
-    loadTasks: async () => {
-      if (!state.currentProject) return;
+  const loadData = async () => {
+    dispatch({ type: 'SET_LOADING', payload: true });
+    try {
+      const [projects, tasks] = await Promise.all([
+        storageService.getAllProjects(),
+        storageService.getTasksByProject(''),
+      ]);
       
-      try {
-        const tasks = await storageService.getTasksByProject(state.currentProject.id);
-        dispatch({ type: 'SET_TASKS', payload: tasks });
-      } catch (error) {
-        console.error('Failed to load tasks:', error);
-        toast({
-          title: 'Ошибка',
-          description: 'Не удалось загрузить задачи',
-          variant: 'destructive'
-        });
-      }
-    },
-
-    createProject: async (name: string) => {
-      try {
-        const project: Project = {
-          id: crypto.randomUUID(),
-          name,
-          createdAt: new Date().toISOString(),
-          order: state.projects.length,
-        };
-        
-        await storageService.saveProject(project);
-        dispatch({ type: 'ADD_PROJECT', payload: project });
-        dispatch({ type: 'SET_CURRENT_PROJECT', payload: project });
-        
-        toast({
-          title: 'Проект создан',
-          description: `Проект "${name}" успешно создан`,
-          duration: 10000,
-        });
-      } catch (error) {
-        console.error('Failed to create project:', error);
-        toast({
-          title: 'Ошибка',
-          description: 'Не удалось создать проект',
-          variant: 'destructive',
-          duration: 10000,
-        });
-      }
-    },
-
-    updateProject: async (project: Project) => {
-      try {
-        await storageService.saveProject(project);
-        dispatch({ type: 'UPDATE_PROJECT', payload: project });
-      } catch (error) {
-        console.error('Failed to update project:', error);
-        toast({
-          title: 'Ошибка',
-          description: 'Не удалось обновить проект',
-          variant: 'destructive',
-          duration: 10000,
-        });
-      }
-    },
-
-    deleteProject: async (id: string) => {
-      try {
-        await storageService.deleteProject(id);
-        dispatch({ type: 'DELETE_PROJECT', payload: id });
-        
-        toast({
-          title: 'Проект удален',
-          description: 'Проект и все связанные задачи удалены',
-          duration: 10000,
-        });
-      } catch (error) {
-        console.error('Failed to delete project:', error);
-        toast({
-          title: 'Ошибка',
-          description: 'Не удалось удалить проект',
-          variant: 'destructive',
-          duration: 10000,
-        });
-      }
-    },
-
-    archiveProject: async (id: string) => {
-      try {
-        await storageService.archiveProject(id);
-        dispatch({ type: 'DELETE_PROJECT', payload: id });
-        
-        toast({
-          title: 'Проект архивирован',
-          description: 'Проект перемещен в архив',
-          duration: 10000,
-        });
-      } catch (error) {
-        console.error('Failed to archive project:', error);
-        toast({
-          title: 'Ошибка',
-          description: 'Не удалось архивировать проект',
-          variant: 'destructive',
-          duration: 10000,
-        });
-      }
-    },
-
-    selectProject: (project: Project) => {
-      dispatch({ type: 'SET_CURRENT_PROJECT', payload: project });
-    },
-
-    createTask: async (taskData: Partial<Task>) => {
-      if (!state.currentProject) return;
+      dispatch({ type: 'SET_PROJECTS', payload: projects });
       
-      try {
-        const task: Task = {
-          id: crypto.randomUUID(),
-          title: taskData.title || '',
-          description: taskData.description,
-          completed: false,
-          createdAt: new Date().toISOString(),
-          deadline: taskData.deadline,
-          deadlineTime: taskData.deadlineTime,
-          quadrant: taskData.quadrant || 'not-urgent-not-important',
-          projectId: state.currentProject.id,
-          order: state.tasks.length,
-          isRecurring: taskData.isRecurring,
-          recurrencePattern: taskData.recurrencePattern,
-        };
+      if (projects.length > 0 && !state.currentProject) {
+        dispatch({ type: 'SELECT_PROJECT', payload: projects[0] });
+        const projectTasks = await storageService.getTasksByProject(projects[0].id);
+        dispatch({ type: 'SET_TASKS', payload: projectTasks });
+      }
+    } catch (error) {
+      console.error('Failed to load data:', error);
+      toast({
+        title: "Ошибка загрузки",
+        description: "Не удалось загрузить данные",
+        variant: "destructive",
+        duration: 10000,
+      });
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
+    }
+  };
+
+  const actions: AppActions = {
+    createTask: async (taskData) => {
+      const task: Task = {
+        ...taskData,
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+      };
+      await storageService.saveTask(task);
+      dispatch({ type: 'ADD_TASK', payload: task });
+      
+      toast({
+        title: "Задача создана",
+        description: `Задача "${task.title}" добавлена`,
+        duration: 10000,
+      });
+    },
+
+    updateTask: async (task) => {
+      await storageService.saveTask(task);
+      dispatch({ type: 'UPDATE_TASK', payload: task });
+    },
+
+    deleteTask: async (id) => {
+      await storageService.deleteTask(id);
+      dispatch({ type: 'DELETE_TASK', payload: id });
+    },
+
+    createProject: async (name) => {
+      const project: Project = {
+        id: crypto.randomUUID(),
+        name,
+        createdAt: new Date().toISOString(),
+      };
+      await storageService.saveProject(project);
+      dispatch({ type: 'ADD_PROJECT', payload: project });
+    },
+
+    deleteProject: async (id) => {
+      await storageService.deleteProject(id);
+      dispatch({ type: 'DELETE_PROJECT', payload: id });
+    },
+
+    archiveProject: async (id) => {
+      await storageService.archiveProject(id);
+      dispatch({ type: 'DELETE_PROJECT', payload: id });
+    },
+
+    selectProject: async (project) => {
+      dispatch({ type: 'SELECT_PROJECT', payload: project });
+      const tasks = await storageService.getTasksByProject(project.id);
+      dispatch({ type: 'SET_TASKS', payload: tasks });
+    },
+
+    loadData,
+
+    moveTaskToProject: async (taskId, projectId) => {
+      const task = state.tasks.find(t => t.id === taskId);
+      if (task) {
+        const updatedTask = { ...task, projectId };
+        await storageService.saveTask(updatedTask);
         
-        await storageService.saveTask(task);
-        dispatch({ type: 'ADD_TASK', payload: task });
-      } catch (error) {
-        console.error('Failed to create task:', error);
-        toast({
-          title: 'Ошибка',
-          description: 'Не удалось создать задачу',
-          variant: 'destructive',
-          duration: 10000,
-        });
-      }
-    },
-
-    updateTask: async (task: Task) => {
-      try {
-        await storageService.saveTask(task);
-        dispatch({ type: 'UPDATE_TASK', payload: task });
-        
-        // Если задача архивирована, убрать её из текущего списка
-        if (task.archived) {
-          dispatch({ type: 'DELETE_TASK', payload: task.id });
-        }
-      } catch (error) {
-        console.error('Failed to update task:', error);
-        toast({
-          title: 'Ошибка',
-          description: 'Не удалось обновить задачу',
-          variant: 'destructive',
-          duration: 10000,
-        });
-      }
-    },
-
-    deleteTask: async (id: string) => {
-      try {
-        await storageService.deleteTask(id);
-        dispatch({ type: 'DELETE_TASK', payload: id });
-      } catch (error) {
-        console.error('Failed to delete task:', error);
-        toast({
-          title: 'Ошибка',
-          description: 'Не удалось удалить задачу',
-          variant: 'destructive',
-          duration: 10000,
-        });
-      }
-    },
-
-    searchTasks: (query: string) => {
-      dispatch({ type: 'SET_SEARCH_QUERY', payload: query });
-    },
-
-    moveTaskToProject: async (taskId: string, projectId: string) => {
-      try {
-        const task = await storageService.getTask(taskId);
-        if (task) {
-          const updatedTask = { ...task, projectId };
-          await storageService.saveTask(updatedTask);
-          
-          // Удаляем задачу из текущего списка
-          dispatch({ type: 'DELETE_TASK', payload: taskId });
-          
-          toast({
-            title: 'Задача перемещена',
-            description: 'Задача успешно перемещена в другой проект',
-            duration: 10000,
-          });
-        }
-      } catch (error) {
-        console.error('Failed to move task:', error);
-        toast({
-          title: 'Ошибка',
-          description: 'Не удалось переместить задачу',
-          variant: 'destructive',
-          duration: 10000,
-        });
-      }
-    },
-
-    createRecurringTask: async (task: Task) => {
-      try {
-        const newTask = await storageService.createRecurringTask(task);
-        dispatch({ type: 'ADD_TASK', payload: newTask });
+        // Remove task from current project's task list
+        dispatch({ type: 'DELETE_TASK', payload: taskId });
         
         toast({
-          title: 'Повторяющаяся задача создана',
-          description: 'Новая задача создана согласно расписанию',
-          duration: 10000,
-        });
-      } catch (error) {
-        console.error('Failed to create recurring task:', error);
-        toast({
-          title: 'Ошибка',
-          description: 'Не удалось создать повторяющуюся задачу',
-          variant: 'destructive',
+          title: "Задача перемещена",
+          description: "Задача успешно перемещена в другой проект",
           duration: 10000,
         });
       }
     },
 
-    reorderProjects: async (projectIds: string[]) => {
-      try {
-        for (let i = 0; i < projectIds.length; i++) {
-          await storageService.updateProjectOrder(projectIds[i], i);
-        }
-        await actions.loadProjects();
-      } catch (error) {
-        console.error('Failed to reorder projects:', error);
-        toast({
-          title: 'Ошибка',
-          description: 'Не удалось изменить порядок проектов',
-          variant: 'destructive',
-          duration: 10000,
-        });
+    createRecurringTask: async (originalTask) => {
+      if (!originalTask.recurrencePattern) return;
+      
+      const nextDate = new Date();
+      const pattern = originalTask.recurrencePattern;
+      
+      switch (pattern.type) {
+        case 'daily':
+          nextDate.setDate(nextDate.getDate() + (pattern.interval || 1));
+          break;
+        case 'weekly':
+          nextDate.setDate(nextDate.getDate() + 7);
+          break;
+        case 'weekdays':
+          nextDate.setDate(nextDate.getDate() + 1);
+          while (nextDate.getDay() === 0 || nextDate.getDay() === 6) {
+            nextDate.setDate(nextDate.getDate() + 1);
+          }
+          break;
+        case 'weekends':
+          nextDate.setDate(nextDate.getDate() + 1);
+          while (nextDate.getDay() !== 0 && nextDate.getDay() !== 6) {
+            nextDate.setDate(nextDate.getDate() + 1);
+          }
+          break;
+        case 'custom':
+          if (pattern.daysOfWeek && pattern.daysOfWeek.length > 0) {
+            nextDate.setDate(nextDate.getDate() + 1);
+            while (!pattern.daysOfWeek.includes(nextDate.getDay())) {
+              nextDate.setDate(nextDate.getDate() + 1);
+            }
+          }
+          break;
       }
+      
+      const newTask = await storageService.createRecurringTask({
+        ...originalTask,
+        deadline: nextDate.toISOString().split('T')[0],
+      });
+      
+      dispatch({ type: 'ADD_TASK', payload: newTask });
     },
   };
 
   useEffect(() => {
-    actions.loadProjects();
+    loadData();
   }, []);
-
-  useEffect(() => {
-    if (state.currentProject) {
-      actions.loadTasks();
-    }
-  }, [state.currentProject]);
 
   return (
     <AppContext.Provider value={{ state, actions }}>

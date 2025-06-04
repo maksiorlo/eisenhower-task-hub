@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useUndo } from '../contexts/UndoContext';
@@ -20,7 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Trash2, Archive, Settings } from 'lucide-react';
+import { Plus, Archive, Settings } from 'lucide-react';
 
 export function AppSidebar() {
   const { state, actions } = useApp();
@@ -38,6 +37,12 @@ export function AppSidebar() {
       await actions.createProject(newProjectName.trim());
       setNewProjectName('');
       setIsCreating(false);
+      
+      toast({
+        title: "Проект создан",
+        description: `Проект "${newProjectName.trim()}" успешно создан`,
+        duration: 10000,
+      });
     }
   };
 
@@ -47,42 +52,6 @@ export function AppSidebar() {
     } else if (e.key === 'Escape') {
       setNewProjectName('');
       setIsCreating(false);
-    }
-  };
-
-  const handleDeleteProject = async (projectId: string) => {
-    const project = state.projects.find(p => p.id === projectId);
-    const projectTasks = state.tasks.filter(t => t.projectId === projectId);
-    
-    if (project) {
-      undoActions.addDeletedProject(project, projectTasks);
-      await actions.deleteProject(projectId);
-      
-      toast({
-        title: "Проект удалён",
-        description: "Нажмите Cmd+Z для отмены",
-        duration: 10000,
-        action: (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              actions.createProject(project.name);
-              projectTasks.forEach(task => actions.createTask({
-                title: task.title,
-                description: task.description,
-                deadline: task.deadline,
-                completed: task.completed,
-                quadrant: task.quadrant,
-                projectId: project.id,
-              }));
-              undoActions.clearDeletedProject(project.id);
-            }}
-          >
-            Отменить
-          </Button>
-        ),
-      });
     }
   };
 
@@ -157,6 +126,12 @@ export function AppSidebar() {
     if (projectId && draggedProject) {
       // Archive project instead of deleting
       await actions.archiveProject(projectId);
+      
+      toast({
+        title: "Проект архивирован",
+        description: "Проект перемещен в архив",
+        duration: 10000,
+      });
     }
   };
 
@@ -233,15 +208,6 @@ export function AppSidebar() {
                             {project.name}
                           </span>
                         </SidebarMenuButton>
-                        
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteProject(project.id)}
-                          className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
                       </div>
                     </ProjectContextMenu>
                   </SidebarMenuItem>

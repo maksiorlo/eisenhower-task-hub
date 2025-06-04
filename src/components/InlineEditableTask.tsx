@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Task } from '../services/StorageService';
 import { useApp } from '../contexts/AppContext';
@@ -8,7 +7,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { TimeInput } from './TimeInput';
-import { Trash2, Calendar, Clock, Repeat } from 'lucide-react';
+import { TaskModal } from './TaskModal';
+import { Trash2, Calendar, Clock, Repeat, Edit } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { RecurrenceSettings } from './RecurrenceSettings';
@@ -27,6 +27,7 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isRecurrenceOpen, setIsRecurrenceOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const handleToggleComplete = async () => {
     const updatedTask = {
@@ -100,6 +101,11 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
     onDragStart?.(e, task);
   };
 
+  const handleOpenModal = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsModalOpen(true);
+  };
+
   const isOverdue = task.deadline && new Date(task.deadline) < new Date() && !task.completed;
   const deadlineClass = isOverdue ? 'text-red-500' : 'text-gray-500';
 
@@ -126,139 +132,157 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
   };
 
   return (
-    <div
-      className={`p-3 bg-white border rounded-lg shadow-sm hover:shadow-md transition-all duration-200 group ${
-        task.completed ? 'opacity-60' : ''
-      }`}
-      draggable
-      onDragStart={handleDragStartWithData}
-    >
-      <div className="flex items-start gap-3">
-        <Checkbox
-          checked={task.completed}
-          onCheckedChange={handleToggleComplete}
-          className="mt-0.5"
-        />
-        
-        <div className="flex-1 min-w-0">
-          {isEditingTitle ? (
-            <Input
-              defaultValue={task.title}
-              autoFocus
-              onBlur={(e) => handleTitleUpdate(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleTitleUpdate(e.currentTarget.value);
-                } else if (e.key === 'Escape') {
-                  setIsEditingTitle(false);
-                }
-              }}
-              className="h-auto p-0 border-0 text-sm font-medium focus-visible:ring-0"
-            />
-          ) : (
-            <h4
-              className={`font-medium text-sm cursor-text ${
-                task.completed ? 'line-through text-gray-500' : 'text-gray-900'
-              }`}
-              onClick={() => setIsEditingTitle(true)}
-            >
-              {task.title}
-            </h4>
-          )}
+    <>
+      <div
+        className={`p-3 bg-white border rounded-lg shadow-sm hover:shadow-md transition-all duration-200 group ${
+          task.completed ? 'opacity-60' : ''
+        }`}
+        draggable
+        onDragStart={handleDragStartWithData}
+      >
+        <div className="flex items-start gap-3">
+          <Checkbox
+            checked={task.completed}
+            onCheckedChange={handleToggleComplete}
+            className="mt-0.5"
+          />
           
-          {isEditingDescription ? (
-            <Textarea
-              defaultValue={task.description}
-              autoFocus
-              onBlur={(e) => handleDescriptionUpdate(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  setIsEditingDescription(false);
-                }
-              }}
-              className="mt-1 min-h-[60px] text-xs border-0 p-0 resize-none focus-visible:ring-0"
-              placeholder="Добавить описание..."
-            />
-          ) : (
-            <p
-              className={`text-xs mt-1 cursor-text min-h-[16px] ${
-                task.completed ? 'line-through text-gray-400' : 'text-gray-600'
-              } ${!task.description ? 'text-gray-400' : ''}`}
-              onClick={() => setIsEditingDescription(true)}
-            >
-              {task.description || 'Добавить описание...'}
-            </p>
-          )}
-          
-          <div className="flex items-center gap-2 mt-2">
-            <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={`h-6 px-2 text-xs ${deadlineClass} ${task.completed ? 'line-through' : ''}`}
-                >
-                  <Calendar className="h-3 w-3 mr-1" />
-                  {task.deadline 
-                    ? format(new Date(task.deadline), 'd MMM yyyy', { locale: ru })
-                    : 'Дата'
+          <div className="flex-1 min-w-0">
+            {isEditingTitle ? (
+              <Input
+                defaultValue={task.title}
+                autoFocus
+                onBlur={(e) => handleTitleUpdate(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleTitleUpdate(e.currentTarget.value);
+                  } else if (e.key === 'Escape') {
+                    setIsEditingTitle(false);
                   }
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <CalendarComponent
-                  mode="single"
-                  selected={task.deadline ? new Date(task.deadline) : undefined}
-                  onSelect={handleDateSelect}
-                  initialFocus
-                  className="p-3 pointer-events-auto"
-                />
-              </PopoverContent>
-            </Popover>
-
-            {task.deadline && (
-              <div className="flex items-center gap-1">
-                <Clock className="h-3 w-3 text-gray-400" />
-                <TimeInput
-                  value={task.deadlineTime || ''}
-                  onChange={handleTimeUpdate}
-                  className="h-6 w-20 text-xs px-2 border-0 bg-transparent focus:bg-white focus:border"
-                  placeholder="00:00"
-                />
-              </div>
+                }}
+                className="h-auto p-0 border-0 text-sm font-medium focus-visible:ring-0"
+              />
+            ) : (
+              <h4
+                className={`font-medium text-sm cursor-text break-words whitespace-normal leading-tight ${
+                  task.completed ? 'line-through text-gray-500' : 'text-gray-900'
+                }`}
+                onClick={() => setIsEditingTitle(true)}
+              >
+                {task.title}
+              </h4>
             )}
+            
+            {isEditingDescription ? (
+              <Textarea
+                defaultValue={task.description}
+                autoFocus
+                onBlur={(e) => handleDescriptionUpdate(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setIsEditingDescription(false);
+                  }
+                }}
+                className="mt-1 min-h-[60px] text-xs border-0 p-0 resize-none focus-visible:ring-0"
+                placeholder="Добавить описание..."
+              />
+            ) : (
+              <p
+                className={`text-xs mt-1 cursor-text min-h-[16px] break-words whitespace-normal leading-tight ${
+                  task.completed ? 'line-through text-gray-400' : 'text-gray-600'
+                } ${!task.description ? 'text-gray-400' : ''}`}
+                onClick={() => setIsEditingDescription(true)}
+              >
+                {task.description || 'Добавить описание...'}
+              </p>
+            )}
+            
+            <div className="flex items-center gap-2 mt-2">
+              <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`h-6 px-2 text-xs ${deadlineClass} ${task.completed ? 'line-through' : ''}`}
+                  >
+                    <Calendar className="h-3 w-3 mr-1" />
+                    {task.deadline 
+                      ? format(new Date(task.deadline), 'd MMM yyyy', { locale: ru })
+                      : 'Дата'
+                    }
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarComponent
+                    mode="single"
+                    selected={task.deadline ? new Date(task.deadline) : undefined}
+                    onSelect={handleDateSelect}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
 
-            <Popover open={isRecurrenceOpen} onOpenChange={setIsRecurrenceOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={`h-6 px-2 text-xs ${task.isRecurring ? 'text-blue-600' : 'text-gray-500'}`}
-                >
-                  <Repeat className="h-3 w-3 mr-1" />
-                  {task.isRecurring ? getRecurrenceDisplay() : 'Повтор'}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80 p-3" align="start">
-                <RecurrenceSettings
-                  isRecurring={task.isRecurring || false}
-                  pattern={task.recurrencePattern}
-                  onRecurrenceChange={handleRecurrenceUpdate}
-                />
-              </PopoverContent>
-            </Popover>
+              {task.deadline && (
+                <div className="flex items-center gap-1">
+                  <Clock className={`h-3 w-3 ${deadlineClass}`} />
+                  <TimeInput
+                    value={task.deadlineTime || ''}
+                    onChange={handleTimeUpdate}
+                    className={`h-6 w-20 text-xs px-2 border-0 bg-transparent focus:bg-white focus:border ${deadlineClass}`}
+                    placeholder="00:00"
+                  />
+                </div>
+              )}
+
+              <Popover open={isRecurrenceOpen} onOpenChange={setIsRecurrenceOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`h-6 px-2 text-xs ${task.isRecurring ? 'text-blue-600' : 'text-gray-500'}`}
+                  >
+                    <Repeat className="h-3 w-3 mr-1" />
+                    {task.isRecurring ? getRecurrenceDisplay() : 'Повтор'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-3" align="start">
+                  <RecurrenceSettings
+                    isRecurring={task.isRecurring || false}
+                    pattern={task.recurrencePattern}
+                    onRecurrenceChange={handleRecurrenceUpdate}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+
+          <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleOpenModal}
+              className="p-1 h-auto opacity-0 group-hover:opacity-100 hover:bg-blue-100"
+            >
+              <Edit className="h-3 w-3 text-blue-500" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleDelete}
+              className="p-1 h-auto opacity-0 group-hover:opacity-100 hover:bg-red-100"
+            >
+              <Trash2 className="h-3 w-3 text-red-500" />
+            </Button>
           </div>
         </div>
-
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleDelete}
-          className="p-1 h-auto opacity-0 group-hover:opacity-100 hover:bg-red-100"
-        >
-          <Trash2 className="h-3 w-3 text-red-500" />
-        </Button>
       </div>
-    </div>
+
+      <TaskModal
+        task={task}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
+    </>
   );
 }
