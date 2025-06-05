@@ -9,6 +9,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { TimeInput } from './TimeInput';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { Calendar } from 'lucide-react';
+import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
 
 interface TaskModalProps {
   task: Task | null;
@@ -24,6 +29,7 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
   const [deadline, setDeadline] = useState('');
   const [deadlineTime, setDeadlineTime] = useState('');
   const [quadrant, setQuadrant] = useState<Task['quadrant']>('urgent-important');
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
   useEffect(() => {
     if (task) {
@@ -69,6 +75,24 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
     }
 
     onClose();
+  };
+
+  const handleDateSelect = (date: Date | undefined) => {
+    if (date) {
+      // Fix timezone issue by creating date string manually
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const dateString = `${year}-${month}-${day}`;
+      setDeadline(dateString);
+    } else {
+      setDeadline('');
+    }
+    setIsDatePickerOpen(false);
+  };
+
+  const handleManualDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDeadline(e.target.value);
   };
 
   const quadrantOptions = [
@@ -121,13 +145,38 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
           <div className="grid grid-cols-3 gap-4">
             <div>
               <Label htmlFor="deadline">Дата</Label>
-              <Input
-                id="deadline"
-                type="date"
-                value={deadline}
-                onChange={(e) => setDeadline(e.target.value)}
-                className="text-base"
-              />
+              <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-left font-normal"
+                    type="button"
+                  >
+                    <Calendar className="h-4 w-4 mr-2" />
+                    {deadline 
+                      ? format(new Date(deadline + 'T00:00:00'), 'd MMM yyyy', { locale: ru })
+                      : 'Выберите дату'
+                    }
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <div className="p-3">
+                    <Input
+                      type="date"
+                      value={deadline}
+                      onChange={handleManualDateChange}
+                      className="mb-2"
+                    />
+                    <CalendarComponent
+                      mode="single"
+                      selected={deadline ? new Date(deadline + 'T00:00:00') : undefined}
+                      onSelect={handleDateSelect}
+                      initialFocus
+                      className="pointer-events-auto"
+                    />
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div>

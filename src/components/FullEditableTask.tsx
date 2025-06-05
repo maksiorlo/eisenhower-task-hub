@@ -25,6 +25,7 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
   const { actions } = useApp();
   const { actions: undoActions } = useUndo();
   const [isEditing, setIsEditing] = useState(false);
+  const [editingTime, setEditingTime] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isRecurrenceOpen, setIsRecurrenceOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -39,9 +40,17 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
   // Handle keyboard shortcuts for task deletion
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Backspace' && isSelected && !isEditing) {
+      if (e.key === 'Backspace' && isSelected && !isEditing && !editingTime) {
         e.preventDefault();
         handleDelete();
+      }
+      if (e.key === 'Enter' && (isEditing || editingTime)) {
+        e.preventDefault();
+        if (editingTime) {
+          setEditingTime(false);
+        } else {
+          handleSave();
+        }
       }
     };
 
@@ -49,21 +58,25 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
     }
-  }, [isSelected, isEditing]);
+  }, [isSelected, isEditing, editingTime]);
 
   // Handle click outside to save changes
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (isEditing && cardRef.current && !cardRef.current.contains(event.target as Node)) {
-        handleSave();
+      if ((isEditing || editingTime) && cardRef.current && !cardRef.current.contains(event.target as Node)) {
+        if (editingTime) {
+          setEditingTime(false);
+        } else {
+          handleSave();
+        }
       }
     };
 
-    if (isEditing) {
+    if (isEditing || editingTime) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [isEditing, title, description]);
+  }, [isEditing, editingTime, title, description]);
 
   const handleToggleComplete = async () => {
     const updatedTask = {
@@ -128,12 +141,25 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
   };
 
   const handleDateSelect = async (date: Date | undefined) => {
-    const dateString = date ? date.toISOString().split('T')[0] : undefined;
-    setManualDate(dateString || '');
-    await actions.updateTask({
-      ...task,
-      deadline: dateString,
-    });
+    if (date) {
+      // Fix timezone issue by creating date string manually
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const dateString = `${year}-${month}-${day}`;
+      
+      setManualDate(dateString);
+      await actions.updateTask({
+        ...task,
+        deadline: dateString,
+      });
+    } else {
+      setManualDate('');
+      await actions.updateTask({
+        ...task,
+        deadline: undefined,
+      });
+    }
     setIsDatePickerOpen(false);
   };
 
@@ -153,6 +179,11 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
     });
   };
 
+  const handleTimeClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingTime(true);
+  };
+
   const handleRecurrenceUpdate = async (isRecurring: boolean, pattern?: any) => {
     await actions.updateTask({
       ...task,
@@ -163,7 +194,7 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
 
   const handleDragStartWithData = (e: React.DragEvent) => {
     // Don't allow drag if editing
-    if (isEditing) {
+    if (isEditing || editingTime) {
       e.preventDefault();
       return;
     }
@@ -177,8 +208,14 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
     setIsModalOpen(true);
   };
 
-  const handleCardClick = () => {
-    if (!isEditing) {
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't start editing if clicking on specific elements
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('[data-time-input]') || target.closest('[role="dialog"]')) {
+      return;
+    }
+    
+    if (!isEditing && !editingTime) {
       setIsSelected(true);
       handleStartEditing();
       // Remove selection after a short delay
@@ -271,7 +308,7 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
         className={`p-3 bg-white border rounded-lg shadow-sm hover:shadow-md transition-all duration-200 group cursor-pointer ${
           task.completed ? 'opacity-60' : ''
         }`}
-        draggable={!isEditing}
+        draggable={!isEditing && !editingTime}
         onDragStart={handleDragStartWithData}
         onClick={handleCardClick}
       >
@@ -375,7 +412,7 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
                       />
                       <CalendarComponent
                         mode="single"
-                        selected={task.deadline ? new Date(task.deadline) : undefined}
+                        selected={task.deadline ? new Date(task.deadline + 'T00:00:00') : undefined}
                         onSelect={handleDateSelect}
                         initialFocus
                         className="pointer-events-auto"
@@ -386,14 +423,25 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
               </div>
 
               {task.deadline && (
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1" data-time-input>
                   <Clock className={`h-3 w-3 ${deadlineClass}`} />
-                  <TimeInput
-                    value={task.deadlineTime || ''}
-                    onChange={handleTimeUpdate}
-                    className={`h-6 w-20 text-xs px-2 border-0 bg-transparent focus:bg-white focus:border ${deadlineClass}`}
-                    placeholder="--:--"
-                  />
+                  {editingTime ? (
+                    <TimeInput
+                      value={task.deadlineTime || ''}
+                      onChange={handleTimeUpdate}
+                      onFinish={() => setEditingTime(false)}
+                      className={`h-6 w-20 text-xs px-2 border focus:bg-white ${deadlineClass}`}
+                      placeholder="ЧЧ:ММ"
+                      autoFocus
+                    />
+                  ) : (
+                    <span
+                      onClick={handleTimeClick}
+                      className={`h-6 w-20 text-xs px-2 cursor-pointer hover:bg-gray-100 rounded flex items-center ${deadlineClass}`}
+                    >
+                      {task.deadlineTime || '--:--'}
+                    </span>
+                  )}
                 </div>
               )}
 
