@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useUndo } from '../contexts/UndoContext';
@@ -15,21 +16,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { ProjectContextMenu } from './ProjectContextMenu';
-import { ExportData } from './ExportData';
 import { ArchiveView } from './ArchiveView';
-import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 import { ThemeToggle } from './ThemeToggle';
-import { Plus, Archive, Keyboard, Upload, Download } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { Plus, Archive } from 'lucide-react';
 
 export function AppSidebar() {
   const { state, actions } = useApp();
   const { actions: undoActions } = useUndo();
-  const { toast } = useToast();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
-  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isEditingProject, setIsEditingProject] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [draggedProject, setDraggedProject] = useState<Project | null>(null);
@@ -114,8 +110,15 @@ export function AppSidebar() {
     }
   };
 
-  const handleProjectDragLeave = () => {
-    setDragOverProject(null);
+  const handleProjectDragLeave = (e: React.DragEvent) => {
+    // Only clear drag over if we're actually leaving the project element
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      setDragOverProject(null);
+    }
   };
 
   const handleProjectDrop = async (e: React.DragEvent, targetProject: Project) => {
@@ -146,66 +149,6 @@ export function AppSidebar() {
   const handleProjectDragEnd = () => {
     setDraggedProject(null);
     setDragOverProject(null);
-  };
-
-  const handleTaskDragOver = (e: React.DragEvent, projectId: string) => {
-    const taskId = e.dataTransfer?.getData('text/plain');
-    if (taskId) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      setDragOverProject(projectId);
-    }
-  };
-
-  const handleImportData = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        try {
-          const jsonData = JSON.parse(e.target?.result as string);
-          if (jsonData && typeof jsonData === 'object') {
-            // Basic validation - check if projects and tasks are present
-            if (Array.isArray(jsonData.projects) && Array.isArray(jsonData.tasks)) {
-              // Import projects
-              for (const project of jsonData.projects) {
-                await storageService.saveProject(project);
-              }
-              // Import tasks
-              for (const task of jsonData.tasks) {
-                await storageService.saveTask(task);
-              }
-
-              await actions.loadData(); // Reload all data
-              toast({
-                title: "Импорт успешен",
-                description: "Данные успешно импортированы",
-              });
-            } else {
-              toast({
-                title: "Ошибка импорта",
-                description: "Неверный формат файла. Ожидается объект с массивами 'projects' и 'tasks'.",
-                variant: "destructive",
-              });
-            }
-          } else {
-            toast({
-              title: "Ошибка импорта",
-              description: "Неверный формат файла. Ожидается JSON.",
-              variant: "destructive",
-            });
-          }
-        } catch (error) {
-          console.error("Failed to import data:", error);
-          toast({
-            title: "Ошибка импорта",
-            description: "Не удалось обработать файл. Возможно, файл поврежден или имеет неверный формат.",
-            variant: "destructive",
-          });
-        }
-      };
-      reader.readAsText(file);
-    }
   };
 
   return (
@@ -256,8 +199,8 @@ export function AppSidebar() {
               <SidebarMenuItem key={project.id}>
                 <ProjectContextMenu project={project}>
                   <div
-                    className={`w-full ${
-                      dragOverProject === project.id ? 'bg-blue-100 dark:bg-blue-900/50' : ''
+                    className={`w-full transition-colors ${
+                      dragOverProject === project.id ? 'bg-blue-100 dark:bg-blue-900/50 ring-2 ring-blue-400 ring-opacity-50 rounded' : ''
                     }`}
                     draggable={!isEditingProject}
                     onDragStart={(e) => handleProjectDragStart(e, project)}
@@ -300,60 +243,20 @@ export function AppSidebar() {
         </SidebarContent>
 
         <SidebarFooter className="p-4">
-          <div className="space-y-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsArchiveOpen(true)}
-              className="w-full justify-start"
-            >
-              <Archive className="h-4 w-4 mr-2" />
-              Архив
-            </Button>
-            
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsShortcutsOpen(true)}
-              className="w-full justify-start"
-            >
-              <Keyboard className="h-4 w-4 mr-2" />
-              Горячие клавиши
-            </Button>
-
-            <div className="flex gap-2">
-              <input
-                type="file"
-                accept=".json"
-                onChange={handleImportData}
-                className="hidden"
-                id="import-data"
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => document.getElementById('import-data')?.click()}
-                className="flex-1"
-              >
-                <Upload className="h-4 w-4 mr-1" />
-                Импорт
-              </Button>
-              
-              <ExportData />
-            </div>
-          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsArchiveOpen(true)}
+            className="w-full justify-start"
+          >
+            <Archive className="h-4 w-4 mr-2" />
+            Архив
+          </Button>
         </SidebarFooter>
       </Sidebar>
 
       {isArchiveOpen && (
         <ArchiveView onClose={() => setIsArchiveOpen(false)} />
-      )}
-
-      {isShortcutsOpen && (
-        <KeyboardShortcutsModal
-          open={isShortcutsOpen}
-          onOpenChange={(open) => setIsShortcutsOpen(open)}
-        />
       )}
     </>
   );

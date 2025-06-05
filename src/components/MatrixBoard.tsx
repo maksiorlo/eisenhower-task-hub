@@ -209,21 +209,25 @@ export function MatrixBoard() {
   const quadrants = [
     {
       id: 'urgent-important' as const,
+      title: 'Срочно и важно',
       color: 'border-red-200 bg-red-50',
       headerColor: 'bg-red-100 text-red-800',
     },
     {
       id: 'important-not-urgent' as const,
+      title: 'Важно, но не срочно',
       color: 'border-green-200 bg-green-50',
       headerColor: 'bg-green-100 text-green-800',
     },
     {
       id: 'urgent-not-important' as const,
+      title: 'Срочно, но не важно',
       color: 'border-yellow-200 bg-yellow-50',
       headerColor: 'bg-yellow-100 text-yellow-800',
     },
     {
       id: 'not-urgent-not-important' as const,
+      title: 'Не срочно и не важно',
       color: 'border-gray-200 bg-gray-50',
       headerColor: 'bg-gray-100 text-gray-600',
     },
@@ -249,6 +253,7 @@ export function MatrixBoard() {
               onDoubleClick={(e) => handleQuadrantDoubleClick(e, quadrant.id)}
             >
               <div className={`p-4 rounded-t-lg ${quadrant.headerColor} flex items-center justify-between`}>
+                <h3 className="font-medium text-sm">{quadrant.title}</h3>
                 <Button
                   size="sm"
                   variant="ghost"

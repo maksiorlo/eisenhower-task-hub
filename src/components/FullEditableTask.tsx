@@ -32,6 +32,7 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
   const [description, setDescription] = useState(task.description || '');
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   // Handle keyboard shortcuts for task deletion
   useEffect(() => {
@@ -47,6 +48,20 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
       return () => window.removeEventListener('keydown', handleKeyDown);
     }
   }, [isSelected, isEditing]);
+
+  // Handle click outside to save changes
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isEditing && cardRef.current && !cardRef.current.contains(event.target as Node)) {
+        handleSave();
+      }
+    };
+
+    if (isEditing) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isEditing, title, description]);
 
   const handleToggleComplete = async () => {
     const updatedTask = {
@@ -77,6 +92,15 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
     setDescription(task.description || '');
     setTimeout(() => {
       titleRef.current?.focus();
+      // Adjust height for existing content
+      if (titleRef.current) {
+        titleRef.current.style.height = 'auto';
+        titleRef.current.style.height = titleRef.current.scrollHeight + 'px';
+      }
+      if (descriptionRef.current) {
+        descriptionRef.current.style.height = 'auto';
+        descriptionRef.current.style.height = Math.max(24, descriptionRef.current.scrollHeight) + 'px';
+      }
     }, 0);
   };
 
@@ -146,11 +170,25 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && e.ctrlKey) {
-      handleSave();
+    if (e.key === 'Enter') {
+      if (e.shiftKey) {
+        // Allow new line with Shift+Enter
+        return;
+      } else {
+        // Save with Enter
+        e.preventDefault();
+        handleSave();
+      }
     } else if (e.key === 'Escape') {
       handleCancel();
     }
+  };
+
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>, setter: (value: string) => void) => {
+    setter(e.target.value);
+    // Auto-resize textarea
+    e.target.style.height = 'auto';
+    e.target.style.height = e.target.scrollHeight + 'px';
   };
 
   const isOverdue = task.deadline && new Date(task.deadline) < new Date() && !task.completed;
@@ -204,9 +242,10 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
   return (
     <>
       <div
+        ref={cardRef}
         className={`p-3 bg-white border rounded-lg shadow-sm hover:shadow-md transition-all duration-200 group cursor-pointer ${
           task.completed ? 'opacity-60' : ''
-        } ${isEditing ? 'ring-2 ring-blue-200' : ''}`}
+        }`}
         draggable={!isEditing}
         onDragStart={handleDragStartWithData}
         onClick={handleCardClick}
@@ -225,37 +264,25 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
                 <Textarea
                   ref={titleRef}
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => handleTextareaChange(e, setTitle)}
                   onKeyDown={handleKeyDown}
-                  className="p-0 border-0 text-sm font-medium focus-visible:ring-0 resize-none min-h-[20px]"
+                  className="p-0 border-0 text-sm font-medium resize-none min-h-[20px] focus-visible:ring-0 focus:outline-none"
                   placeholder="Название задачи"
-                  rows={Math.max(1, title.split('\n').length)}
                   style={{ 
                     height: 'auto',
                     minHeight: '20px'
-                  }}
-                  onInput={(e) => {
-                    const target = e.target as HTMLTextAreaElement;
-                    target.style.height = 'auto';
-                    target.style.height = target.scrollHeight + 'px';
                   }}
                 />
                 <Textarea
                   ref={descriptionRef}
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) => handleTextareaChange(e, setDescription)}
                   onKeyDown={handleKeyDown}
-                  className="text-xs border-0 p-0 resize-none focus-visible:ring-0 min-h-[60px]"
+                  className="text-xs border-0 p-0 resize-none min-h-[24px] focus-visible:ring-0 focus:outline-none"
                   placeholder="Описание задачи..."
-                  rows={Math.max(4, description.split('\n').length)}
                   style={{ 
                     height: 'auto',
-                    minHeight: '60px'
-                  }}
-                  onInput={(e) => {
-                    const target = e.target as HTMLTextAreaElement;
-                    target.style.height = 'auto';
-                    target.style.height = target.scrollHeight + 'px';
+                    minHeight: '24px'
                   }}
                 />
                 <div className="flex gap-2 pt-2">
