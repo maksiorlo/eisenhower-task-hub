@@ -17,7 +17,7 @@ interface EnhancedTaskInputProps {
 }
 
 export function EnhancedTaskInput({ quadrant, onCancel }: EnhancedTaskInputProps) {
-  const { actions } = useApp();
+  const { actions, state } = useApp();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [deadline, setDeadline] = useState<string | undefined>();
@@ -56,6 +56,8 @@ export function EnhancedTaskInput({ quadrant, onCancel }: EnhancedTaskInputProps
       quadrant,
       deadline,
       deadlineTime: deadlineTime || undefined,
+      completed: false,
+      projectId: state.currentProject?.id || '',
     });
 
     onCancel();
@@ -109,10 +111,10 @@ export function EnhancedTaskInput({ quadrant, onCancel }: EnhancedTaskInputProps
         onChange={(e) => handleTextareaChange(e, setDescription)}
         onKeyDown={handleKeyDown}
         placeholder="Описание задачи..."
-        className="text-xs border-0 p-0 resize-none min-h-[24px] focus-visible:ring-0 focus:outline-none"
+        className="text-xs border-0 p-0 resize-none min-h-[16px] focus-visible:ring-0 focus:outline-none"
         style={{ 
-          height: 'auto',
-          minHeight: '24px'
+          height: description ? 'auto' : '16px',
+          minHeight: '16px'
         }}
       />
 
