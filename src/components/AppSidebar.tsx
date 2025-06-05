@@ -352,7 +352,7 @@ export function AppSidebar() {
       {isShortcutsOpen && (
         <KeyboardShortcutsModal
           open={isShortcutsOpen}
-          onClose={() => setIsShortcutsOpen(false)}
+          onOpenChange={(open) => setIsShortcutsOpen(open)}
         />
       )}
     </>
