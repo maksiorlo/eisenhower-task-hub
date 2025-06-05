@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { Task, Project, storageService } from '../services/StorageService';
 import { useToast } from '@/hooks/use-toast';
@@ -207,11 +206,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await storageService.saveTask(task);
       dispatch({ type: 'ADD_TASK', payload: task });
       
-      toast({
-        title: "Задача создана",
-        description: `Задача "${task.title}" добавлена`,
-        duration: 10000,
-      });
+      // Remove toast notification when creating task
     },
 
     updateTask: async (task) => {

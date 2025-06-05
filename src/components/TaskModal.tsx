@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { TimeInput } from './TimeInput';
 
 interface TaskModalProps {
   task: Task | null;
@@ -21,6 +22,7 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [deadline, setDeadline] = useState('');
+  const [deadlineTime, setDeadlineTime] = useState('');
   const [quadrant, setQuadrant] = useState<Task['quadrant']>('urgent-important');
 
   useEffect(() => {
@@ -28,11 +30,13 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
       setTitle(task.title);
       setDescription(task.description || '');
       setDeadline(task.deadline || '');
+      setDeadlineTime(task.deadlineTime || '');
       setQuadrant(task.quadrant);
     } else {
       setTitle('');
       setDescription('');
       setDeadline('');
+      setDeadlineTime('');
       setQuadrant(defaultQuadrant || 'urgent-important');
     }
   }, [task, defaultQuadrant]);
@@ -48,6 +52,7 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
         title: title.trim(),
         description: description.trim() || undefined,
         deadline: deadline || undefined,
+        deadlineTime: deadlineTime || undefined,
         quadrant,
       });
     } else {
@@ -56,6 +61,7 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
         title: title.trim(),
         description: description.trim() || undefined,
         deadline: deadline || undefined,
+        deadlineTime: deadlineTime || undefined,
         quadrant,
         projectId: state.currentProject.id,
         completed: false,
@@ -79,28 +85,6 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
     return Math.max(8, Math.min(lines + 2, 15));
   };
 
-  const makeLinksClickable = (text: string) => {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const parts = text.split(urlRegex);
-    
-    return parts.map((part, index) => {
-      if (urlRegex.test(part)) {
-        return (
-          <a 
-            key={index} 
-            href={part} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="text-blue-600 underline hover:text-blue-800"
-          >
-            {part}
-          </a>
-        );
-      }
-      return part;
-    });
-  };
-
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
@@ -120,11 +104,6 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
               required
               className="text-base"
             />
-            {title && (
-              <div className="mt-2 text-sm text-gray-600 whitespace-pre-wrap">
-                {makeLinksClickable(title)}
-              </div>
-            )}
           </div>
 
           <div>
@@ -137,22 +116,27 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
               rows={getDescriptionRows()}
               className="text-base resize-none"
             />
-            {description && (
-              <div className="mt-2 text-sm text-gray-600 whitespace-pre-wrap">
-                {makeLinksClickable(description)}
-              </div>
-            )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div>
-              <Label htmlFor="deadline">Дедлайн</Label>
+              <Label htmlFor="deadline">Дата</Label>
               <Input
                 id="deadline"
                 type="date"
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
                 className="text-base"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="deadlineTime">Время</Label>
+              <TimeInput
+                value={deadlineTime}
+                onChange={setDeadlineTime}
+                className="text-base h-10"
+                placeholder="ЧЧ:ММ"
               />
             </div>
 

@@ -6,6 +6,7 @@ import { useUndo } from '../contexts/UndoContext';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { TimeInput } from './TimeInput';
 import { TaskModal } from './TaskModal';
 import { Trash2, Calendar, Clock, Repeat, Edit } from 'lucide-react';
@@ -30,6 +31,7 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
   const [isSelected, setIsSelected] = useState(false);
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description || '');
+  const [manualDate, setManualDate] = useState(task.deadline || '');
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -99,7 +101,11 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
       }
       if (descriptionRef.current) {
         descriptionRef.current.style.height = 'auto';
-        descriptionRef.current.style.height = Math.max(24, descriptionRef.current.scrollHeight) + 'px';
+        const lines = description.split('\n').length;
+        const maxLines = 6;
+        const lineHeight = 16;
+        const height = Math.min(lines * lineHeight, maxLines * lineHeight);
+        descriptionRef.current.style.height = Math.max(16, height) + 'px';
       }
     }, 0);
   };
@@ -122,11 +128,22 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
   };
 
   const handleDateSelect = async (date: Date | undefined) => {
+    const dateString = date ? date.toISOString().split('T')[0] : undefined;
+    setManualDate(dateString || '');
     await actions.updateTask({
       ...task,
-      deadline: date ? date.toISOString().split('T')[0] : undefined,
+      deadline: dateString,
     });
     setIsDatePickerOpen(false);
+  };
+
+  const handleManualDateChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const dateValue = e.target.value;
+    setManualDate(dateValue);
+    await actions.updateTask({
+      ...task,
+      deadline: dateValue || undefined,
+    });
   };
 
   const handleTimeUpdate = async (time: string) => {
@@ -186,9 +203,17 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
 
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>, setter: (value: string) => void) => {
     setter(e.target.value);
-    // Auto-resize textarea
+    // Auto-resize textarea with max height limit for description
     e.target.style.height = 'auto';
-    e.target.style.height = e.target.scrollHeight + 'px';
+    if (e.target === descriptionRef.current) {
+      const lines = e.target.value.split('\n').length;
+      const maxLines = 6;
+      const lineHeight = 16;
+      const height = Math.min(lines * lineHeight, maxLines * lineHeight);
+      e.target.style.height = Math.max(16, height) + 'px';
+    } else {
+      e.target.style.height = e.target.scrollHeight + 'px';
+    }
   };
 
   const isOverdue = task.deadline && new Date(task.deadline) < new Date() && !task.completed;
@@ -266,7 +291,7 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
                   value={title}
                   onChange={(e) => handleTextareaChange(e, setTitle)}
                   onKeyDown={handleKeyDown}
-                  className="p-0 border-0 text-sm font-medium resize-none min-h-[20px] focus-visible:ring-0 focus:outline-none"
+                  className="p-0 border-0 text-sm font-medium resize-none min-h-[20px] focus:outline-none focus:ring-0 focus-visible:ring-0"
                   placeholder="Название задачи"
                   style={{ 
                     height: 'auto',
@@ -278,11 +303,12 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
                   value={description}
                   onChange={(e) => handleTextareaChange(e, setDescription)}
                   onKeyDown={handleKeyDown}
-                  className="text-xs border-0 p-0 resize-none min-h-[24px] focus-visible:ring-0 focus:outline-none"
+                  className="text-xs border-0 p-0 resize-none min-h-[16px] focus:outline-none focus:ring-0 focus-visible:ring-0 overflow-y-auto"
                   placeholder="Описание задачи..."
                   style={{ 
                     height: 'auto',
-                    minHeight: '24px'
+                    minHeight: '16px',
+                    maxHeight: '96px'
                   }}
                 />
                 <div className="flex gap-2 pt-2">
@@ -309,6 +335,12 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
                     className={`text-xs mt-1 cursor-text break-words whitespace-pre-wrap leading-tight ${
                       task.completed ? 'line-through text-gray-400' : 'text-gray-600'
                     }`}
+                    style={{
+                      display: '-webkit-box',
+                      WebkitLineClamp: 6,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden'
+                    }}
                   >
                     {makeLinksClickable(task.description)}
                   </p>
@@ -317,31 +349,41 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
             )}
             
             <div className="flex items-center gap-2 mt-2">
-              <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={`h-6 px-2 text-xs ${deadlineClass} ${task.completed ? 'line-through' : ''}`}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Calendar className="h-3 w-3 mr-1" />
-                    {task.deadline 
-                      ? format(new Date(task.deadline), 'd MMM yyyy', { locale: ru })
-                      : 'Дата'
-                    }
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <CalendarComponent
-                    mode="single"
-                    selected={task.deadline ? new Date(task.deadline) : undefined}
-                    onSelect={handleDateSelect}
-                    initialFocus
-                    className="p-3 pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
+              <div className="flex items-center gap-1">
+                <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`h-6 px-2 text-xs ${deadlineClass} ${task.completed ? 'line-through' : ''}`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Calendar className="h-3 w-3 mr-1" />
+                      {task.deadline 
+                        ? format(new Date(task.deadline), 'd MMM yyyy', { locale: ru })
+                        : 'Дата'
+                      }
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <div className="p-3">
+                      <Input
+                        type="date"
+                        value={manualDate}
+                        onChange={handleManualDateChange}
+                        className="mb-2"
+                      />
+                      <CalendarComponent
+                        mode="single"
+                        selected={task.deadline ? new Date(task.deadline) : undefined}
+                        onSelect={handleDateSelect}
+                        initialFocus
+                        className="pointer-events-auto"
+                      />
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
 
               {task.deadline && (
                 <div className="flex items-center gap-1">

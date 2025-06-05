@@ -13,7 +13,7 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { Trash2, Archive, ArrowRight } from 'lucide-react';
+import { Trash2, Archive, ArrowRight, Copy } from 'lucide-react';
 
 interface TaskContextMenuProps {
   task: Task;
@@ -33,6 +33,20 @@ export function TaskContextMenu({ task, children }: TaskContextMenuProps) {
     await actions.updateTask({ ...task, archived: true });
   };
 
+  const handleDuplicate = async () => {
+    await actions.createTask({
+      title: `${task.title} (копия)`,
+      description: task.description,
+      quadrant: task.quadrant,
+      deadline: task.deadline,
+      deadlineTime: task.deadlineTime,
+      projectId: task.projectId,
+      completed: false,
+      isRecurring: task.isRecurring,
+      recurrencePattern: task.recurrencePattern,
+    });
+  };
+
   const handleMoveToProject = async (projectId: string) => {
     await actions.moveTaskToProject(task.id, projectId);
   };
@@ -45,6 +59,11 @@ export function TaskContextMenu({ task, children }: TaskContextMenuProps) {
         {children}
       </ContextMenuTrigger>
       <ContextMenuContent className="w-48">
+        <ContextMenuItem onClick={handleDuplicate}>
+          <Copy className="h-4 w-4 mr-2" />
+          Дублировать
+        </ContextMenuItem>
+        <ContextMenuSeparator />
         <ContextMenuItem onClick={handleDelete} className="text-red-600 focus:text-red-600">
           <Trash2 className="h-4 w-4 mr-2" />
           Удалить
