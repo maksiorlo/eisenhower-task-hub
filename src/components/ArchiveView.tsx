@@ -42,12 +42,19 @@ export function ArchiveView({ onClose }: ArchiveViewProps) {
           const projectTasks = await storageService.getArchivedTasksByProject(project.id);
           return {
             ...project,
+            archivedAt: project.archivedAt || new Date().toISOString(),
             taskCount: projectTasks.length
           };
         })
       );
       
-      setArchivedTasks(tasks);
+      // Ensure tasks have archivedAt property
+      const tasksWithArchivedAt = tasks.map(task => ({
+        ...task,
+        archivedAt: task.archivedAt || new Date().toISOString()
+      }));
+      
+      setArchivedTasks(tasksWithArchivedAt);
       setArchivedProjects(projectsWithTaskCount);
     } catch (error) {
       console.error('Failed to load archived items:', error);

@@ -18,6 +18,7 @@ export interface Task {
   quadrant: 'urgent-important' | 'important-not-urgent' | 'urgent-not-important' | 'not-urgent-not-important';
   projectId: string;
   archived?: boolean;
+  archivedAt?: string;
   order?: number;
   isRecurring?: boolean;
   recurrencePattern?: RecurrencePattern;
@@ -33,6 +34,7 @@ export interface Project {
   name: string;
   createdAt: string;
   archived?: boolean;
+  archivedAt?: string;
   order?: number;
 }
 
@@ -52,6 +54,10 @@ class StorageService {
   // Projects
   async saveProject(project: Project): Promise<void> {
     await this.projectStore.setItem(project.id, project);
+  }
+
+  async updateProject(project: Project): Promise<void> {
+    await this.saveProject(project);
   }
 
   async getProject(id: string): Promise<Project | null> {
@@ -81,14 +87,15 @@ class StorageService {
   async archiveProject(id: string): Promise<void> {
     const project = await this.getProject(id);
     if (project) {
-      await this.saveProject({ ...project, archived: true });
+      await this.saveProject({ ...project, archived: true, archivedAt: new Date().toISOString() });
     }
   }
 
   async restoreProject(id: string): Promise<void> {
     const project = await this.getProject(id);
     if (project) {
-      await this.saveProject({ ...project, archived: false });
+      const { archivedAt, ...restoredProject } = project;
+      await this.saveProject({ ...restoredProject, archived: false });
     }
   }
 
@@ -126,6 +133,10 @@ class StorageService {
     await this.taskStore.setItem(task.id, task);
   }
 
+  async updateTask(task: Task): Promise<void> {
+    await this.saveTask(task);
+  }
+
   async getTask(id: string): Promise<Task | null> {
     return await this.taskStore.getItem(id);
   }
@@ -150,17 +161,28 @@ class StorageService {
     return tasks;
   }
 
+  async getArchivedTasksByProject(projectId: string): Promise<Task[]> {
+    const tasks: Task[] = [];
+    await this.taskStore.iterate((value: Task) => {
+      if (value.projectId === projectId && value.archived) {
+        tasks.push(value);
+      }
+    });
+    return tasks;
+  }
+
   async archiveTask(id: string): Promise<void> {
     const task = await this.getTask(id);
     if (task) {
-      await this.saveTask({ ...task, archived: true });
+      await this.saveTask({ ...task, archived: true, archivedAt: new Date().toISOString() });
     }
   }
 
   async restoreTask(id: string): Promise<void> {
     const task = await this.getTask(id);
     if (task) {
-      await this.saveTask({ ...task, archived: false });
+      const { archivedAt, ...restoredTask } = task;
+      await this.saveTask({ ...restoredTask, archived: false });
     }
   }
 

@@ -32,6 +32,7 @@ interface AppActions {
   moveTaskToProject: (taskId: string, projectId: string) => Promise<void>;
   moveTaskToArchive: (taskId: string) => Promise<void>;
   createRecurringTask: (originalTask: Task) => Promise<void>;
+  reorderProjects: (fromIndex: number, toIndex: number) => Promise<void>;
 }
 
 interface AppContextType {
@@ -167,7 +168,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const archiveTask = async (taskId: string) => {
     const task = state.tasks.find(t => t.id === taskId);
     if (task) {
-      const updatedTask = { ...task, archived: true };
+      const updatedTask = { ...task, archived: true, archivedAt: new Date().toISOString() };
       await storageService.updateTask(updatedTask);
       dispatch({ type: 'UPDATE_TASK', payload: updatedTask });
     }
@@ -271,7 +272,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     moveTaskToArchive: async (taskId) => {
       const task = state.tasks.find(t => t.id === taskId);
       if (task) {
-        const updatedTask = { ...task, archived: true };
+        const updatedTask = { ...task, archived: true, archivedAt: new Date().toISOString() };
         await storageService.saveTask(updatedTask);
         
         // Remove task from current view
@@ -327,6 +328,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       
       dispatch({ type: 'ADD_TASK', payload: newTask });
     },
+
+    reorderProjects,
   };
 
   const value = {
@@ -334,7 +337,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     actions: {
       ...actions,
       archiveTask,
-      reorderProjects,
     },
   };
 
