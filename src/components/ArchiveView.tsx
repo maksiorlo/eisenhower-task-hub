@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { storageService, Task, Project } from '../services/StorageService';
@@ -13,11 +14,17 @@ interface ArchiveViewProps {
   onClose: () => void;
 }
 
+interface ArchivedItem {
+  id: string;
+  archivedAt: string;
+  [key: string]: any;
+}
+
 export function ArchiveView({ onClose }: ArchiveViewProps) {
   const { actions } = useApp();
   const { toast } = useToast();
-  const [archivedTasks, setArchivedTasks] = useState<Task[]>([]);
-  const [archivedProjects, setArchivedProjects] = useState<Project[]>([]);
+  const [archivedTasks, setArchivedTasks] = useState<(Task & ArchivedItem)[]>([]);
+  const [archivedProjects, setArchivedProjects] = useState<(Project & ArchivedItem & { taskCount?: number })[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -28,8 +35,20 @@ export function ArchiveView({ onClose }: ArchiveViewProps) {
     try {
       const tasks = await storageService.getArchivedTasks();
       const projects = await storageService.getArchivedProjects();
+      
+      // Add task count to archived projects
+      const projectsWithTaskCount = await Promise.all(
+        projects.map(async (project) => {
+          const projectTasks = await storageService.getArchivedTasksByProject(project.id);
+          return {
+            ...project,
+            taskCount: projectTasks.length
+          };
+        })
+      );
+      
       setArchivedTasks(tasks);
-      setArchivedProjects(projects);
+      setArchivedProjects(projectsWithTaskCount);
     } catch (error) {
       console.error('Failed to load archived items:', error);
       toast({
@@ -42,7 +61,7 @@ export function ArchiveView({ onClose }: ArchiveViewProps) {
     }
   };
 
-  const handleRestoreProject = async (project: Project) => {
+  const handleRestoreProject = async (project: Project & ArchivedItem) => {
     try {
       await storageService.restoreProject(project.id);
       await actions.loadProjects();
@@ -61,7 +80,7 @@ export function ArchiveView({ onClose }: ArchiveViewProps) {
     }
   };
 
-  const handleRestoreTask = async (task: Task) => {
+  const handleRestoreTask = async (task: Task & ArchivedItem) => {
     try {
       await storageService.restoreTask(task.id);
       await actions.loadTasks();
@@ -112,6 +131,16 @@ export function ArchiveView({ onClose }: ArchiveViewProps) {
     }
   };
 
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   return (
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
@@ -149,6 +178,9 @@ export function ArchiveView({ onClose }: ArchiveViewProps) {
                         {task.description && (
                           <CardDescription>{task.description}</CardDescription>
                         )}
+                        <div className="text-xs text-muted-foreground">
+                          Архивировано: {formatDate(task.archivedAt)}
+                        </div>
                       </div>
                       <div className="flex gap-2">
                         <Button
@@ -156,7 +188,7 @@ export function ArchiveView({ onClose }: ArchiveViewProps) {
                           size="sm"
                           onClick={() => handleRestoreTask(task)}
                         >
-                          <RotateCcw className="h-4 w-4" />
+                          Восстановить
                         </Button>
                         <Button
                           variant="outline"
@@ -200,14 +232,22 @@ export function ArchiveView({ onClose }: ArchiveViewProps) {
                 <Card key={project.id}>
                   <CardHeader>
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-base">{project.name}</CardTitle>
+                      <div className="space-y-1">
+                        <CardTitle className="text-base">{project.name}</CardTitle>
+                        <div className="text-sm text-muted-foreground">
+                          Задач в проекте: {project.taskCount || 0}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Архивирован: {formatDate(project.archivedAt)}
+                        </div>
+                      </div>
                       <div className="flex gap-2">
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handleRestoreProject(project)}
                         >
-                          <RotateCcw className="h-4 w-4" />
+                          Восстановить
                         </Button>
                         <Button
                           variant="outline"

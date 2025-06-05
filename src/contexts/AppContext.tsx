@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { Task, Project, storageService } from '../services/StorageService';
 import { useToast } from '@/hooks/use-toast';
@@ -165,6 +164,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'SET_SEARCH_QUERY', payload: query });
   };
 
+  const archiveTask = async (taskId: string) => {
+    const task = state.tasks.find(t => t.id === taskId);
+    if (task) {
+      const updatedTask = { ...task, archived: true };
+      await storageService.updateTask(updatedTask);
+      dispatch({ type: 'UPDATE_TASK', payload: updatedTask });
+    }
+  };
+
+  const reorderProjects = async (fromIndex: number, toIndex: number) => {
+    const newProjects = [...state.projects];
+    const [movedProject] = newProjects.splice(fromIndex, 1);
+    newProjects.splice(toIndex, 0, movedProject);
+    
+    // Update order for all projects
+    for (let i = 0; i < newProjects.length; i++) {
+      const updatedProject = { ...newProjects[i], order: i };
+      await storageService.updateProject(updatedProject);
+      newProjects[i] = updatedProject;
+    }
+    
+    dispatch({ type: 'SET_PROJECTS', payload: newProjects });
+  };
+
   const actions: AppActions = {
     createTask: async (taskData) => {
       const task: Task = {
@@ -306,12 +329,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
   };
 
+  const value = {
+    state,
+    actions: {
+      ...actions,
+      archiveTask,
+      reorderProjects,
+    },
+  };
+
   useEffect(() => {
     loadData();
   }, []);
 
   return (
-    <AppContext.Provider value={{ state, actions }}>
+    <AppContext.Provider value={value}>
       {children}
     </AppContext.Provider>
   );

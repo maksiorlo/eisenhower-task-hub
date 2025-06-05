@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useUndo } from '../contexts/UndoContext';
 import { ArchiveView } from './ArchiveView';
@@ -21,6 +21,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Archive, Settings } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export function AppSidebar() {
   const { state, actions } = useApp();
@@ -34,7 +44,49 @@ export function AppSidebar() {
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
   const [editingProject, setEditingProject] = useState<string | null>(null);
   const [editingProjectName, setEditingProjectName] = useState('');
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<any>(null);
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const { toast } = useToast();
+
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Backspace' && selectedProject && !editingProject && !isCreating) {
+        const project = state.projects.find(p => p.id === selectedProject);
+        if (project) {
+          setProjectToDelete(project);
+          setShowDeleteDialog(true);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedProject, editingProject, isCreating, state.projects]);
+
+  const handleDeleteProject = async () => {
+    if (projectToDelete) {
+      // Check if project has tasks
+      const projectTasks = state.tasks.filter(task => task.projectId === projectToDelete.id);
+      
+      // Archive all tasks first
+      for (const task of projectTasks) {
+        await actions.updateTask({ ...task, archived: true });
+      }
+      
+      // Then archive the project
+      await actions.archiveProject(projectToDelete.id);
+      
+      toast({
+        title: "Проект удален",
+        description: `Проект "${projectToDelete.name}" перемещен в архив`,
+        duration: 3000,
+      });
+    }
+    setShowDeleteDialog(false);
+    setProjectToDelete(null);
+  };
 
   const handleCreateProject = async () => {
     if (newProjectName.trim()) {
@@ -96,8 +148,15 @@ export function AppSidebar() {
     }
   };
 
-  const handleTaskDragLeave = () => {
-    setDragOverProject(null);
+  const handleTaskDragLeave = (e: React.DragEvent) => {
+    // Only clear if we're actually leaving the project area
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      setDragOverProject(null);
+    }
   };
 
   const handleTaskDrop = async (e: React.DragEvent, projectId: string) => {
@@ -110,7 +169,7 @@ export function AppSidebar() {
     }
   };
 
-  // Project drag and drop handlers
+  // Project drag and drop handlers for reordering
   const handleProjectDragStart = (e: React.DragEvent, projectId: string) => {
     setDraggedProject(projectId);
     e.dataTransfer.effectAllowed = 'move';
@@ -120,22 +179,42 @@ export function AppSidebar() {
   const handleProjectDragEnd = () => {
     setDraggedProject(null);
     setDragOverArchive(false);
+    setDragOverProject(null);
   };
 
   const handleProjectDragOver = (e: React.DragEvent, targetProjectId: string) => {
     e.preventDefault();
+    const draggedData = e.dataTransfer.getData('text/plain');
+    
+    // Handle project reordering
     if (draggedProject && draggedProject !== targetProjectId) {
       e.dataTransfer.dropEffect = 'move';
+      setDragOverProject(targetProjectId);
+    }
+    // Handle task drop
+    else if (state.tasks.some(t => t.id === draggedData)) {
+      e.dataTransfer.dropEffect = 'move';
+      setDragOverProject(targetProjectId);
     }
   };
 
   const handleProjectDrop = async (e: React.DragEvent, targetProjectId: string) => {
     e.preventDefault();
-    const draggedProjectId = e.dataTransfer.getData('text/plain');
+    const draggedData = e.dataTransfer.getData('text/plain');
+    setDragOverProject(null);
     
-    if (draggedProjectId && draggedProjectId !== targetProjectId) {
-      // Reorder projects logic would go here
-      console.log('Reorder projects:', draggedProjectId, 'to', targetProjectId);
+    // Handle project reordering
+    if (draggedProject && draggedProject !== targetProjectId) {
+      const draggedIndex = state.projects.findIndex(p => p.id === draggedProject);
+      const targetIndex = state.projects.findIndex(p => p.id === targetProjectId);
+      
+      if (draggedIndex !== -1 && targetIndex !== -1) {
+        await actions.reorderProjects(draggedIndex, targetIndex);
+      }
+    }
+    // Handle task drop
+    else if (state.tasks.some(t => t.id === draggedData)) {
+      await actions.moveTaskToProject(draggedData, targetProjectId);
     }
   };
 
@@ -172,7 +251,10 @@ export function AppSidebar() {
     }
     // Check if it's a task
     else if (state.tasks.some(t => t.id === draggedData)) {
-      await actions.moveTaskToArchive(draggedData);
+      await actions.updateTask({ 
+        ...state.tasks.find(t => t.id === draggedData)!, 
+        archived: true 
+      });
     }
   };
 
@@ -230,16 +312,11 @@ export function AppSidebar() {
                         draggable
                         onDragStart={(e) => handleProjectDragStart(e, project.id)}
                         onDragEnd={handleProjectDragEnd}
-                        onDragOver={(e) => {
-                          handleTaskDragOver(e, project.id);
-                          handleProjectDragOver(e, project.id);
-                        }}
+                        onDragOver={(e) => handleProjectDragOver(e, project.id)}
                         onDragLeave={handleTaskDragLeave}
-                        onDrop={(e) => {
-                          handleTaskDrop(e, project.id);
-                          handleProjectDrop(e, project.id);
-                        }}
+                        onDrop={(e) => handleProjectDrop(e, project.id)}
                         onDoubleClick={() => handleProjectDoubleClick(project)}
+                        onClick={() => setSelectedProject(project.id)}
                       >
                         {editingProject === project.id ? (
                           <Input
@@ -299,6 +376,24 @@ export function AppSidebar() {
           </div>
         </SidebarFooter>
       </Sidebar>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить проект?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Проект "{projectToDelete?.name}" и все его задачи будут перемещены в архив. 
+              Эта операция обратима.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отменить</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteProject}>
+              Удалить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {showArchive && (
         <ArchiveView onClose={() => setShowArchive(false)} />

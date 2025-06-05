@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Task } from '../services/StorageService';
 import { useApp } from '../contexts/AppContext';
@@ -14,6 +13,7 @@ export function MatrixBoard() {
   const [creatingInQuadrant, setCreatingInQuadrant] = useState<Task['quadrant'] | null>(null);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [dragOverQuadrant, setDragOverQuadrant] = useState<Task['quadrant'] | null>(null);
+  const [dragOverTaskIndex, setDragOverTaskIndex] = useState<number | null>(null);
 
   useKeyboardShortcuts();
 
@@ -26,7 +26,7 @@ export function MatrixBoard() {
   }
 
   const getTasksByQuadrant = (quadrant: Task['quadrant']) => {
-    const filteredTasks = state.tasks.filter(task => task.quadrant === quadrant);
+    const filteredTasks = state.tasks.filter(task => task.quadrant === quadrant && !task.archived);
     
     // Sort: completed tasks at bottom, then by order (if exists), then by deadline proximity
     return filteredTasks.sort((a, b) => {
@@ -67,6 +67,23 @@ export function MatrixBoard() {
     handleCreateTask(quadrant);
   };
 
+  const canReorderTasks = (task1: Task, task2: Task) => {
+    // Both have no deadline
+    if (!task1.deadline && !task2.deadline) return true;
+    
+    // Both have same deadline (date only or date+time)
+    if (task1.deadline && task2.deadline) {
+      const date1 = task1.deadline;
+      const date2 = task2.deadline;
+      const time1 = task1.deadlineTime || '';
+      const time2 = task2.deadlineTime || '';
+      
+      return date1 === date2 && time1 === time2;
+    }
+    
+    return false;
+  };
+
   const handleDragStart = (e: React.DragEvent, task: Task) => {
     setDraggedTask(task);
     e.dataTransfer.effectAllowed = 'move';
@@ -98,6 +115,7 @@ export function MatrixBoard() {
   const handleDragEnd = () => {
     setDraggedTask(null);
     setDragOverQuadrant(null);
+    setDragOverTaskIndex(null);
   };
 
   const handleDragOver = (e: React.DragEvent, quadrant: Task['quadrant']) => {
@@ -106,19 +124,65 @@ export function MatrixBoard() {
     setDragOverQuadrant(quadrant);
   };
 
+  const handleTaskDragOver = (e: React.DragEvent, quadrant: Task['quadrant'], index: number, targetTask: Task) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (draggedTask && canReorderTasks(draggedTask, targetTask)) {
+      e.dataTransfer.dropEffect = 'move';
+      setDragOverTaskIndex(index);
+      setDragOverQuadrant(quadrant);
+    } else {
+      setDragOverTaskIndex(null);
+      setDragOverQuadrant(quadrant);
+    }
+  };
+
   const handleDragLeave = () => {
     setDragOverQuadrant(null);
+    setDragOverTaskIndex(null);
   };
 
   const handleDrop = async (e: React.DragEvent, targetQuadrant: Task['quadrant']) => {
     e.preventDefault();
     setDragOverQuadrant(null);
+    setDragOverTaskIndex(null);
     
-    if (draggedTask && draggedTask.quadrant !== targetQuadrant) {
-      await actions.updateTask({
-        ...draggedTask,
-        quadrant: targetQuadrant,
-      });
+    if (draggedTask) {
+      // If dropping on same quadrant and we have a specific index, reorder
+      if (draggedTask.quadrant === targetQuadrant && dragOverTaskIndex !== null) {
+        const tasks = getTasksByQuadrant(targetQuadrant);
+        const draggedIndex = tasks.findIndex(t => t.id === draggedTask.id);
+        const targetIndex = dragOverTaskIndex;
+        
+        if (draggedIndex !== -1 && draggedIndex !== targetIndex) {
+          await reorderTasks(targetQuadrant, draggedIndex, targetIndex);
+        }
+      }
+      // Otherwise, just move to different quadrant
+      else if (draggedTask.quadrant !== targetQuadrant) {
+        await actions.updateTask({
+          ...draggedTask,
+          quadrant: targetQuadrant,
+        });
+      }
+    }
+    setDraggedTask(null);
+  };
+
+  const handleTaskDrop = async (e: React.DragEvent, quadrant: Task['quadrant'], index: number, targetTask: Task) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverQuadrant(null);
+    setDragOverTaskIndex(null);
+    
+    if (draggedTask && canReorderTasks(draggedTask, targetTask)) {
+      const tasks = getTasksByQuadrant(quadrant);
+      const draggedIndex = tasks.findIndex(t => t.id === draggedTask.id);
+      
+      if (draggedIndex !== -1 && draggedIndex !== index) {
+        await reorderTasks(quadrant, draggedIndex, index);
+      }
     }
     setDraggedTask(null);
   };
@@ -144,25 +208,21 @@ export function MatrixBoard() {
   const quadrants = [
     {
       id: 'urgent-important' as const,
-      title: 'Срочно и важно',
       color: 'border-red-200 bg-red-50',
       headerColor: 'bg-red-100 text-red-800',
     },
     {
       id: 'important-not-urgent' as const,
-      title: 'Важно, не срочно',
       color: 'border-green-200 bg-green-50',
       headerColor: 'bg-green-100 text-green-800',
     },
     {
       id: 'urgent-not-important' as const,
-      title: 'Срочно, не важно',
       color: 'border-yellow-200 bg-yellow-50',
       headerColor: 'bg-yellow-100 text-yellow-800',
     },
     {
       id: 'not-urgent-not-important' as const,
-      title: 'Не срочно и не важно',
       color: 'border-gray-200 bg-gray-50',
       headerColor: 'bg-gray-100 text-gray-600',
     },
@@ -188,9 +248,6 @@ export function MatrixBoard() {
               onDoubleClick={(e) => handleQuadrantDoubleClick(e, quadrant.id)}
             >
               <div className={`p-4 rounded-t-lg ${quadrant.headerColor} flex items-center justify-between`}>
-                <div>
-                  <h3 className="font-semibold text-sm">{quadrant.title}</h3>
-                </div>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -211,7 +268,16 @@ export function MatrixBoard() {
                 
                 {tasks.map((task, index) => (
                   <TaskContextMenu key={task.id} task={task}>
-                    <div data-task-card>
+                    <div 
+                      data-task-card
+                      className={`${
+                        dragOverTaskIndex === index && draggedTask && canReorderTasks(draggedTask, task) 
+                          ? 'border-t-2 border-blue-400' 
+                          : ''
+                      }`}
+                      onDragOver={(e) => handleTaskDragOver(e, quadrant.id, index, task)}
+                      onDrop={(e) => handleTaskDrop(e, quadrant.id, index, task)}
+                    >
                       <InlineEditableTask
                         task={task}
                         onDragStart={handleDragStart}

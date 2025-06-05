@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Task } from '../services/StorageService';
 import { useApp } from '../contexts/AppContext';
 import { useUndo } from '../contexts/UndoContext';
@@ -29,7 +29,23 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isRecurrenceOpen, setIsRecurrenceOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSelected, setIsSelected] = useState(false);
   const titleRef = useRef<HTMLHeadingElement>(null);
+
+  // Handle keyboard shortcuts for task deletion
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Backspace' && isSelected && !isEditingTitle && !isEditingDescription) {
+        e.preventDefault();
+        handleDelete();
+      }
+    };
+
+    if (isSelected) {
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [isSelected, isEditingTitle, isEditingDescription]);
 
   const handleToggleComplete = async () => {
     const updatedTask = {
@@ -49,8 +65,7 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
     }
   };
 
-  const handleDelete = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDelete = async () => {
     undoActions.addDeletedTask(task);
     await actions.deleteTask(task.id);
   };
@@ -99,6 +114,12 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
   };
 
   const handleDragStartWithData = (e: React.DragEvent) => {
+    // Don't allow drag if editing
+    if (isEditingTitle || isEditingDescription) {
+      e.preventDefault();
+      return;
+    }
+    
     e.dataTransfer.setData('text/plain', task.id);
     onDragStart?.(e, task);
   };
@@ -106,6 +127,12 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
   const handleOpenModal = (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsModalOpen(true);
+  };
+
+  const handleCardClick = () => {
+    setIsSelected(true);
+    // Remove selection after a short delay to allow for keyboard events
+    setTimeout(() => setIsSelected(false), 100);
   };
 
   const isOverdue = task.deadline && new Date(task.deadline) < new Date() && !task.completed;
@@ -175,8 +202,9 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
         className={`p-3 bg-white border rounded-lg shadow-sm hover:shadow-md transition-all duration-200 group cursor-pointer ${
           task.completed ? 'opacity-60' : ''
         }`}
-        draggable
+        draggable={!isEditingTitle && !isEditingDescription}
         onDragStart={handleDragStartWithData}
+        onClick={handleCardClick}
       >
         <div className="flex items-start gap-3">
           <Checkbox
