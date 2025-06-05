@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useUndo } from '../contexts/UndoContext';
-import { Project } from '../services/StorageService';
+import { Project, storageService } from '../services/StorageService';
 import {
   Sidebar,
   SidebarContent,
@@ -351,7 +351,7 @@ export function AppSidebar() {
 
       {isShortcutsOpen && (
         <KeyboardShortcutsModal
-          isOpen={isShortcutsOpen}
+          open={isShortcutsOpen}
           onClose={() => setIsShortcutsOpen(false)}
         />
       )}

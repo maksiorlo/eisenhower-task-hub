@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { storageService, Task, Project } from '../services/StorageService';
@@ -40,17 +39,14 @@ export function ArchiveView({ onClose }: ArchiveViewProps) {
       const projectsWithTaskCount = await Promise.all(
         projects.map(async (project) => {
           // Count all tasks (both archived and non-archived) that belong to this project
-          const allProjectTasks: Task[] = [];
-          await storageService.taskStore.iterate((value: Task) => {
-            if (value.projectId === project.id) {
-              allProjectTasks.push(value);
-            }
-          });
+          const projectTasks = await storageService.getTasksByProject(project.id);
+          const archivedProjectTasks = await storageService.getArchivedTasksByProject(project.id);
+          const totalTasks = projectTasks.length + archivedProjectTasks.length;
           
           return {
             ...project,
             archivedAt: project.archivedAt || new Date().toISOString(),
-            taskCount: allProjectTasks.length
+            taskCount: totalTasks
           };
         })
       );
