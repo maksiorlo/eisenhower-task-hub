@@ -1,8 +1,9 @@
+
 import React, { useState } from 'react';
 import { Task } from '../services/StorageService';
 import { useApp } from '../contexts/AppContext';
-import { InlineEditableTask } from './InlineEditableTask';
-import { InlineTaskInput } from './InlineTaskInput';
+import { FullEditableTask } from './FullEditableTask';
+import { EnhancedTaskInput } from './EnhancedTaskInput';
 import { TaskContextMenu } from './TaskContextMenu';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
@@ -260,7 +261,7 @@ export function MatrixBoard() {
               
               <div className="p-4 space-y-3">
                 {creatingInQuadrant === quadrant.id && (
-                  <InlineTaskInput
+                  <EnhancedTaskInput
                     quadrant={quadrant.id}
                     onCancel={handleCancelCreate}
                   />
@@ -278,7 +279,7 @@ export function MatrixBoard() {
                       onDragOver={(e) => handleTaskDragOver(e, quadrant.id, index, task)}
                       onDrop={(e) => handleTaskDrop(e, quadrant.id, index, task)}
                     >
-                      <InlineEditableTask
+                      <FullEditableTask
                         task={task}
                         onDragStart={handleDragStart}
                       />

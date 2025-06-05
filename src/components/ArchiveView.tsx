@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Archive, RotateCcw, Trash2 } from 'lucide-react';
+import { Archive, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface ArchiveViewProps {
@@ -36,14 +36,21 @@ export function ArchiveView({ onClose }: ArchiveViewProps) {
       const tasks = await storageService.getArchivedTasks();
       const projects = await storageService.getArchivedProjects();
       
-      // Add task count to archived projects
+      // Add task count to archived projects by counting tasks that belong to each project
       const projectsWithTaskCount = await Promise.all(
         projects.map(async (project) => {
-          const projectTasks = await storageService.getArchivedTasksByProject(project.id);
+          // Count all tasks (both archived and non-archived) that belong to this project
+          const allProjectTasks: Task[] = [];
+          await storageService.taskStore.iterate((value: Task) => {
+            if (value.projectId === project.id) {
+              allProjectTasks.push(value);
+            }
+          });
+          
           return {
             ...project,
             archivedAt: project.archivedAt || new Date().toISOString(),
-            taskCount: projectTasks.length
+            taskCount: allProjectTasks.length
           };
         })
       );

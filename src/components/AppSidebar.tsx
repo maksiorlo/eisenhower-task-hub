@@ -1,402 +1,359 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useUndo } from '../contexts/UndoContext';
-import { ArchiveView } from './ArchiveView';
-import { ProjectContextMenu } from './ProjectContextMenu';
-import { ThemeToggle } from './ThemeToggle';
+import { Project } from '../services/StorageService';
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarFooter,
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { ProjectContextMenu } from './ProjectContextMenu';
+import { ExportData } from './ExportData';
+import { ArchiveView } from './ArchiveView';
+import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
+import { ThemeToggle } from './ThemeToggle';
+import { Plus, Archive, Keyboard, Upload, Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Archive, Settings } from 'lucide-react';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 
 export function AppSidebar() {
   const { state, actions } = useApp();
   const { actions: undoActions } = useUndo();
-  const [newProjectName, setNewProjectName] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
-  const [showArchive, setShowArchive] = useState(false);
-  const [draggedProject, setDraggedProject] = useState<string | null>(null);
-  const [dragOverProject, setDragOverProject] = useState<string | null>(null);
-  const [dragOverArchive, setDragOverArchive] = useState(false);
-  const [draggedTask, setDraggedTask] = useState<string | null>(null);
-  const [editingProject, setEditingProject] = useState<string | null>(null);
-  const [editingProjectName, setEditingProjectName] = useState('');
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [projectToDelete, setProjectToDelete] = useState<any>(null);
-  const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const { toast } = useToast();
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  const [isEditingProject, setIsEditingProject] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const [draggedProject, setDraggedProject] = useState<Project | null>(null);
+  const [dragOverProject, setDragOverProject] = useState<string | null>(null);
+  const [dragOverFromTask, setDragOverFromTask] = useState(false);
 
-  // Handle keyboard shortcuts
+  // Handle drag over for projects (from tasks)
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Backspace' && selectedProject && !editingProject && !isCreating) {
-        const project = state.projects.find(p => p.id === selectedProject);
-        if (project) {
-          setProjectToDelete(project);
-          setShowDeleteDialog(true);
-        }
+    const handleTaskDragOver = (e: DragEvent) => {
+      const taskId = e.dataTransfer?.getData('text/plain');
+      if (taskId) {
+        setDragOverFromTask(true);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedProject, editingProject, isCreating, state.projects]);
+    const handleTaskDragLeave = () => {
+      setDragOverFromTask(false);
+      setDragOverProject(null);
+    };
 
-  const handleDeleteProject = async () => {
-    if (projectToDelete) {
-      // Check if project has tasks
-      const projectTasks = state.tasks.filter(task => task.projectId === projectToDelete.id);
-      
-      // Archive all tasks first
-      for (const task of projectTasks) {
-        await actions.updateTask({ ...task, archived: true });
-      }
-      
-      // Then archive the project
-      await actions.archiveProject(projectToDelete.id);
-      
-      toast({
-        title: "Проект удален",
-        description: `Проект "${projectToDelete.name}" перемещен в архив`,
-        duration: 3000,
-      });
-    }
-    setShowDeleteDialog(false);
-    setProjectToDelete(null);
-  };
+    const handleTaskDrop = () => {
+      setDragOverFromTask(false);
+      setDragOverProject(null);
+    };
 
-  const handleCreateProject = async () => {
-    if (newProjectName.trim()) {
-      await actions.createProject(newProjectName.trim());
-      setNewProjectName('');
-      setIsCreating(false);
-      
-      toast({
-        title: "Проект создан",
-        description: `Проект "${newProjectName.trim()}" успешно создан`,
-        duration: 10000,
-      });
-    }
-  };
+    document.addEventListener('dragover', handleTaskDragOver);
+    document.addEventListener('dragleave', handleTaskDragLeave);
+    document.addEventListener('drop', handleTaskDrop);
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleCreateProject();
-    } else if (e.key === 'Escape') {
-      setNewProjectName('');
-      setIsCreating(false);
-    }
-  };
+    return () => {
+      document.removeEventListener('dragover', handleTaskDragOver);
+      document.removeEventListener('dragleave', handleTaskDragLeave);
+      document.removeEventListener('drop', handleTaskDrop);
+    };
+  }, []);
 
-  const handleProjectDoubleClick = (project: any) => {
-    setEditingProject(project.id);
-    setEditingProjectName(project.name);
-  };
-
-  const handleRenameProject = async () => {
-    const project = state.projects.find(p => p.id === editingProject);
-    if (project && editingProjectName.trim() && editingProjectName.trim() !== project.name) {
-      await actions.updateProject({
-        ...project,
-        name: editingProjectName.trim(),
-      });
-    }
-    setEditingProject(null);
-    setEditingProjectName('');
-  };
-
-  const handleRenameKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleRenameProject();
-    } else if (e.key === 'Escape') {
-      setEditingProject(null);
-      setEditingProjectName('');
-    }
-  };
-
-  // Task drag and drop handlers
-  const handleTaskDragOver = (e: React.DragEvent, projectId: string) => {
+  const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
-    const draggedData = e.dataTransfer.getData('text/plain');
-    // Check if it's a task (not a project)
-    if (state.tasks.some(t => t.id === draggedData)) {
+    if (!newProjectName.trim()) return;
+
+    await actions.createProject(newProjectName.trim());
+    setNewProjectName('');
+    setIsCreateDialogOpen(false);
+  };
+
+  const handleProjectDoubleClick = (project: Project) => {
+    setIsEditingProject(project.id);
+    setEditingName(project.name);
+  };
+
+  const handleProjectNameUpdate = async (projectId: string) => {
+    if (editingName.trim() && editingName !== state.projects.find(p => p.id === projectId)?.name) {
+      const project = state.projects.find(p => p.id === projectId);
+      if (project) {
+        await actions.updateProject({
+          ...project,
+          name: editingName.trim(),
+        });
+      }
+    }
+    setIsEditingProject(null);
+    setEditingName('');
+  };
+
+  const handleProjectDragStart = (e: React.DragEvent, project: Project) => {
+    setDraggedProject(project);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('application/project', project.id);
+  };
+
+  const handleProjectDragOver = (e: React.DragEvent, projectId: string) => {
+    e.preventDefault();
+    const dataType = Array.from(e.dataTransfer.types);
+    
+    if (dataType.includes('application/project')) {
+      e.dataTransfer.dropEffect = 'move';
+      setDragOverProject(projectId);
+    } else if (dataType.includes('text/plain')) {
+      // Task being dragged
       e.dataTransfer.dropEffect = 'move';
       setDragOverProject(projectId);
     }
   };
 
-  const handleTaskDragLeave = (e: React.DragEvent) => {
-    // Only clear if we're actually leaving the project area
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const x = e.clientX;
-    const y = e.clientY;
-    
-    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
-      setDragOverProject(null);
-    }
+  const handleProjectDragLeave = () => {
+    setDragOverProject(null);
   };
 
-  const handleTaskDrop = async (e: React.DragEvent, projectId: string) => {
+  const handleProjectDrop = async (e: React.DragEvent, targetProject: Project) => {
     e.preventDefault();
-    const taskId = e.dataTransfer.getData('text/plain');
     setDragOverProject(null);
     
-    if (taskId && state.tasks.some(t => t.id === taskId)) {
-      await actions.moveTaskToProject(taskId, projectId);
+    const dataType = Array.from(e.dataTransfer.types);
+    
+    if (dataType.includes('application/project') && draggedProject) {
+      // Project reordering
+      const fromIndex = state.projects.findIndex(p => p.id === draggedProject.id);
+      const toIndex = state.projects.findIndex(p => p.id === targetProject.id);
+      
+      if (fromIndex !== -1 && toIndex !== -1 && fromIndex !== toIndex) {
+        await actions.reorderProjects(fromIndex, toIndex);
+      }
+    } else if (dataType.includes('text/plain')) {
+      // Task being moved to project
+      const taskId = e.dataTransfer.getData('text/plain');
+      if (taskId && targetProject.id !== state.currentProject?.id) {
+        await actions.moveTaskToProject(taskId, targetProject.id);
+      }
     }
-  };
-
-  // Project drag and drop handlers for reordering
-  const handleProjectDragStart = (e: React.DragEvent, projectId: string) => {
-    setDraggedProject(projectId);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', projectId);
+    
+    setDraggedProject(null);
   };
 
   const handleProjectDragEnd = () => {
     setDraggedProject(null);
-    setDragOverArchive(false);
     setDragOverProject(null);
   };
 
-  const handleProjectDragOver = (e: React.DragEvent, targetProjectId: string) => {
-    e.preventDefault();
-    const draggedData = e.dataTransfer.getData('text/plain');
-    
-    // Handle project reordering
-    if (draggedProject && draggedProject !== targetProjectId) {
+  const handleTaskDragOver = (e: React.DragEvent, projectId: string) => {
+    const taskId = e.dataTransfer?.getData('text/plain');
+    if (taskId) {
+      e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
-      setDragOverProject(targetProjectId);
-    }
-    // Handle task drop
-    else if (state.tasks.some(t => t.id === draggedData)) {
-      e.dataTransfer.dropEffect = 'move';
-      setDragOverProject(targetProjectId);
+      setDragOverProject(projectId);
     }
   };
 
-  const handleProjectDrop = async (e: React.DragEvent, targetProjectId: string) => {
-    e.preventDefault();
-    const draggedData = e.dataTransfer.getData('text/plain');
-    setDragOverProject(null);
-    
-    // Handle project reordering
-    if (draggedProject && draggedProject !== targetProjectId) {
-      const draggedIndex = state.projects.findIndex(p => p.id === draggedProject);
-      const targetIndex = state.projects.findIndex(p => p.id === targetProjectId);
-      
-      if (draggedIndex !== -1 && targetIndex !== -1) {
-        await actions.reorderProjects(draggedIndex, targetIndex);
-      }
-    }
-    // Handle task drop
-    else if (state.tasks.some(t => t.id === draggedData)) {
-      await actions.moveTaskToProject(draggedData, targetProjectId);
-    }
-  };
+  const handleImportData = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const jsonData = JSON.parse(e.target?.result as string);
+          if (jsonData && typeof jsonData === 'object') {
+            // Basic validation - check if projects and tasks are present
+            if (Array.isArray(jsonData.projects) && Array.isArray(jsonData.tasks)) {
+              // Import projects
+              for (const project of jsonData.projects) {
+                await storageService.saveProject(project);
+              }
+              // Import tasks
+              for (const task of jsonData.tasks) {
+                await storageService.saveTask(task);
+              }
 
-  // Archive drag and drop
-  const handleArchiveDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    const draggedData = e.dataTransfer.getData('text/plain');
-    
-    // Check if it's a project or task
-    if (draggedProject || state.tasks.some(t => t.id === draggedData)) {
-      e.dataTransfer.dropEffect = 'move';
-      setDragOverArchive(true);
-    }
-  };
-
-  const handleArchiveDragLeave = () => {
-    setDragOverArchive(false);
-  };
-
-  const handleArchiveDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    const draggedData = e.dataTransfer.getData('text/plain');
-    setDragOverArchive(false);
-    
-    // Check if it's a project
-    if (draggedProject && state.projects.some(p => p.id === draggedData)) {
-      await actions.archiveProject(draggedData);
-      
-      toast({
-        title: "Проект архивирован",
-        description: "Проект перемещен в архив",
-        duration: 10000,
-      });
-    }
-    // Check if it's a task
-    else if (state.tasks.some(t => t.id === draggedData)) {
-      await actions.updateTask({ 
-        ...state.tasks.find(t => t.id === draggedData)!, 
-        archived: true 
-      });
+              await actions.loadData(); // Reload all data
+              toast({
+                title: "Импорт успешен",
+                description: "Данные успешно импортированы",
+              });
+            } else {
+              toast({
+                title: "Ошибка импорта",
+                description: "Неверный формат файла. Ожидается объект с массивами 'projects' и 'tasks'.",
+                variant: "destructive",
+              });
+            }
+          } else {
+            toast({
+              title: "Ошибка импорта",
+              description: "Неверный формат файла. Ожидается JSON.",
+              variant: "destructive",
+            });
+          }
+        } catch (error) {
+          console.error("Failed to import data:", error);
+          toast({
+            title: "Ошибка импорта",
+            description: "Не удалось обработать файл. Возможно, файл поврежден или имеет неверный формат.",
+            variant: "destructive",
+          });
+        }
+      };
+      reader.readAsText(file);
     }
   };
 
   return (
     <>
       <Sidebar>
-        <SidebarHeader className="border-b p-4">
+        <SidebarHeader className="p-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Task Matrix</h2>
-            <ThemeToggle />
+            <h2 className="text-lg font-semibold">Проекты</h2>
+            <div className="flex gap-1">
+              <ThemeToggle />
+              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="ghost" size="sm">
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Создать проект</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleCreateProject} className="space-y-4">
+                    <Input
+                      placeholder="Название проекта"
+                      value={newProjectName}
+                      onChange={(e) => setNewProjectName(e.target.value)}
+                      autoFocus
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setIsCreateDialogOpen(false)}
+                      >
+                        Отмена
+                      </Button>
+                      <Button type="submit">Создать</Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
         </SidebarHeader>
 
-        <SidebarContent>
-          <SidebarGroup>
-            <div className="flex items-center justify-between">
-              <SidebarGroupLabel>Проекты</SidebarGroupLabel>
+        <SidebarContent className="px-2">
+          <SidebarMenu>
+            {state.projects.map((project) => (
+              <SidebarMenuItem key={project.id}>
+                <ProjectContextMenu project={project}>
+                  <div
+                    className={`w-full ${
+                      dragOverProject === project.id ? 'bg-blue-100 dark:bg-blue-900/50' : ''
+                    }`}
+                    draggable={!isEditingProject}
+                    onDragStart={(e) => handleProjectDragStart(e, project)}
+                    onDragOver={(e) => handleProjectDragOver(e, project.id)}
+                    onDragLeave={handleProjectDragLeave}
+                    onDrop={(e) => handleProjectDrop(e, project)}
+                    onDragEnd={handleProjectDragEnd}
+                  >
+                    {isEditingProject === project.id ? (
+                      <Input
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        onBlur={() => handleProjectNameUpdate(project.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleProjectNameUpdate(project.id);
+                          } else if (e.key === 'Escape') {
+                            setIsEditingProject(null);
+                            setEditingName('');
+                          }
+                        }}
+                        autoFocus
+                        className="h-auto p-2 text-sm"
+                      />
+                    ) : (
+                      <SidebarMenuButton
+                        isActive={state.currentProject?.id === project.id}
+                        onClick={() => actions.selectProject(project)}
+                        onDoubleClick={() => handleProjectDoubleClick(project)}
+                        className="w-full justify-start"
+                      >
+                        <span className="truncate">{project.name}</span>
+                      </SidebarMenuButton>
+                    )}
+                  </div>
+                </ProjectContextMenu>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarContent>
+
+        <SidebarFooter className="p-4">
+          <div className="space-y-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsArchiveOpen(true)}
+              className="w-full justify-start"
+            >
+              <Archive className="h-4 w-4 mr-2" />
+              Архив
+            </Button>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsShortcutsOpen(true)}
+              className="w-full justify-start"
+            >
+              <Keyboard className="h-4 w-4 mr-2" />
+              Горячие клавиши
+            </Button>
+
+            <div className="flex gap-2">
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImportData}
+                className="hidden"
+                id="import-data"
+              />
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setIsCreating(true)}
-                className="h-6 w-6 p-0"
+                onClick={() => document.getElementById('import-data')?.click()}
+                className="flex-1"
               >
-                <Plus className="h-4 w-4" />
+                <Upload className="h-4 w-4 mr-1" />
+                Импорт
               </Button>
+              
+              <ExportData />
             </div>
-            
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {isCreating && (
-                  <SidebarMenuItem>
-                    <Input
-                      value={newProjectName}
-                      onChange={(e) => setNewProjectName(e.target.value)}
-                      onKeyDown={handleKeyPress}
-                      onBlur={() => {
-                        if (!newProjectName.trim()) {
-                          setIsCreating(false);
-                        }
-                      }}
-                      placeholder="Название проекта"
-                      className="h-8 text-sm"
-                      autoFocus
-                    />
-                  </SidebarMenuItem>
-                )}
-                
-                {state.projects.map((project) => (
-                  <SidebarMenuItem key={project.id}>
-                    <ProjectContextMenu project={project}>
-                      <div
-                        className={`flex items-center justify-between w-full group cursor-move transition-colors ${
-                          dragOverProject === project.id ? 'bg-blue-50 dark:bg-blue-900/20' : ''
-                        }`}
-                        draggable
-                        onDragStart={(e) => handleProjectDragStart(e, project.id)}
-                        onDragEnd={handleProjectDragEnd}
-                        onDragOver={(e) => handleProjectDragOver(e, project.id)}
-                        onDragLeave={handleTaskDragLeave}
-                        onDrop={(e) => handleProjectDrop(e, project.id)}
-                        onDoubleClick={() => handleProjectDoubleClick(project)}
-                        onClick={() => setSelectedProject(project.id)}
-                      >
-                        {editingProject === project.id ? (
-                          <Input
-                            value={editingProjectName}
-                            onChange={(e) => setEditingProjectName(e.target.value)}
-                            onKeyDown={handleRenameKeyPress}
-                            onBlur={handleRenameProject}
-                            className="h-8 text-sm"
-                            autoFocus
-                          />
-                        ) : (
-                          <SidebarMenuButton
-                            isActive={state.currentProject?.id === project.id}
-                            onClick={() => actions.selectProject(project)}
-                            className="flex-1 min-w-0"
-                          >
-                            <span className="truncate text-left whitespace-normal break-words leading-tight">
-                              {project.name}
-                            </span>
-                          </SidebarMenuButton>
-                        )}
-                      </div>
-                    </ProjectContextMenu>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-
-          <SidebarGroup>
-            <SidebarGroupLabel>Инструменты</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton 
-                    onClick={() => setShowArchive(true)}
-                    className={`transition-colors ${
-                      dragOverArchive ? 'bg-blue-50 dark:bg-blue-900/20' : ''
-                    }`}
-                    onDragOver={handleArchiveDragOver}
-                    onDragLeave={handleArchiveDragLeave}
-                    onDrop={handleArchiveDrop}
-                  >
-                    <Archive className="h-4 w-4" />
-                    <span>Архив</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-
-        <SidebarFooter className="border-t p-4">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Settings className="h-3 w-3" />
-            <span>Горячие клавиши: ← → (проекты), ПКМ (меню задач)</span>
           </div>
         </SidebarFooter>
       </Sidebar>
 
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Удалить проект?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Проект "{projectToDelete?.name}" и все его задачи будут перемещены в архив. 
-              Эта операция обратима.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Отменить</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteProject}>
-              Удалить
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {isArchiveOpen && (
+        <ArchiveView onClose={() => setIsArchiveOpen(false)} />
+      )}
 
-      {showArchive && (
-        <ArchiveView onClose={() => setShowArchive(false)} />
+      {isShortcutsOpen && (
+        <KeyboardShortcutsModal
+          isOpen={isShortcutsOpen}
+          onClose={() => setIsShortcutsOpen(false)}
+        />
       )}
     </>
   );

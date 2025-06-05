@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { Task, Project, storageService } from '../services/StorageService';
 import { useToast } from '@/hooks/use-toast';
@@ -33,6 +34,7 @@ interface AppActions {
   moveTaskToArchive: (taskId: string) => Promise<void>;
   createRecurringTask: (originalTask: Task) => Promise<void>;
   reorderProjects: (fromIndex: number, toIndex: number) => Promise<void>;
+  archiveTask: (taskId: string) => Promise<void>;
 }
 
 interface AppContextType {
@@ -168,9 +170,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const archiveTask = async (taskId: string) => {
     const task = state.tasks.find(t => t.id === taskId);
     if (task) {
-      const updatedTask = { ...task, archived: true, archivedAt: new Date().toISOString() };
-      await storageService.updateTask(updatedTask);
-      dispatch({ type: 'UPDATE_TASK', payload: updatedTask });
+      await storageService.archiveTask(taskId);
+      // Remove task from current view
+      dispatch({ type: 'DELETE_TASK', payload: taskId });
+      
+      toast({
+        title: "Задача архивирована",
+        description: "Задача перемещена в архив",
+        duration: 10000,
+      });
     }
   };
 
@@ -207,7 +215,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
 
     updateTask: async (task) => {
-      await storageService.saveTask(task);
+      await storageService.updateTask(task);
       dispatch({ type: 'UPDATE_TASK', payload: task });
     },
 
@@ -227,7 +235,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
 
     updateProject: async (project) => {
-      await storageService.saveProject(project);
+      await storageService.updateProject(project);
       dispatch({ type: 'UPDATE_PROJECT', payload: project });
     },
 
@@ -256,7 +264,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const task = state.tasks.find(t => t.id === taskId);
       if (task) {
         const updatedTask = { ...task, projectId };
-        await storageService.saveTask(updatedTask);
+        await storageService.updateTask(updatedTask);
         
         // Remove task from current project's task list
         dispatch({ type: 'DELETE_TASK', payload: taskId });
@@ -270,20 +278,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
 
     moveTaskToArchive: async (taskId) => {
-      const task = state.tasks.find(t => t.id === taskId);
-      if (task) {
-        const updatedTask = { ...task, archived: true, archivedAt: new Date().toISOString() };
-        await storageService.saveTask(updatedTask);
-        
-        // Remove task from current view
-        dispatch({ type: 'DELETE_TASK', payload: taskId });
-        
-        toast({
-          title: "Задача архивирована",
-          description: "Задача перемещена в архив",
-          duration: 10000,
-        });
-      }
+      await archiveTask(taskId);
     },
 
     createRecurringTask: async (originalTask) => {
@@ -330,14 +325,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
 
     reorderProjects,
+    archiveTask,
   };
 
   const value = {
     state,
-    actions: {
-      ...actions,
-      archiveTask,
-    },
+    actions,
   };
 
   useEffect(() => {
