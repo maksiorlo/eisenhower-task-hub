@@ -29,7 +29,6 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isRecurrenceOpen, setIsRecurrenceOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSelected, setIsSelected] = useState(false);
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description || '');
   const [manualDate, setManualDate] = useState(task.deadline || '');
@@ -40,35 +39,31 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
   // Handle keyboard shortcuts for task deletion
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Backspace' && isSelected && !isEditing && !editingTime) {
-        e.preventDefault();
-        handleDelete();
-      }
-      if (e.key === 'Enter' && (isEditing || editingTime)) {
-        e.preventDefault();
-        if (editingTime) {
-          setEditingTime(false);
-        } else {
-          handleSave();
+      if (e.key === 'Backspace' && !isEditing && !editingTime) {
+        const activeElement = document.activeElement;
+        if (activeElement === document.body || cardRef.current?.contains(activeElement)) {
+          e.preventDefault();
+          handleDelete();
         }
+      }
+      if (e.key === 'Enter' && editingTime) {
+        e.preventDefault();
+        setEditingTime(false);
       }
     };
 
-    if (isSelected) {
-      window.addEventListener('keydown', handleKeyDown);
-      return () => window.removeEventListener('keydown', handleKeyDown);
-    }
-  }, [isSelected, isEditing, editingTime]);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isEditing, editingTime]);
 
   // Handle click outside to save changes
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if ((isEditing || editingTime) && cardRef.current && !cardRef.current.contains(event.target as Node)) {
-        if (editingTime) {
-          setEditingTime(false);
-        } else {
-          handleSave();
-        }
+      if (isEditing && cardRef.current && !cardRef.current.contains(event.target as Node)) {
+        handleSave();
+      }
+      if (editingTime && cardRef.current && !cardRef.current.contains(event.target as Node)) {
+        setEditingTime(false);
       }
     };
 
@@ -142,7 +137,7 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
 
   const handleDateSelect = async (date: Date | undefined) => {
     if (date) {
-      // Fix timezone issue by creating date string manually
+      // Create date string in local timezone
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
@@ -175,7 +170,7 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
   const handleTimeUpdate = async (time: string) => {
     await actions.updateTask({
       ...task,
-      deadlineTime: time,
+      deadlineTime: time || undefined,
     });
   };
 
@@ -211,15 +206,16 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
   const handleCardClick = (e: React.MouseEvent) => {
     // Don't start editing if clicking on specific elements
     const target = e.target as HTMLElement;
-    if (target.closest('button') || target.closest('[data-time-input]') || target.closest('[role="dialog"]')) {
+    if (target.closest('button') || 
+        target.closest('[data-time-input]') || 
+        target.closest('[role="dialog"]') ||
+        target.closest('.popover-content') ||
+        target.closest('[data-radix-popper-content-wrapper]')) {
       return;
     }
     
     if (!isEditing && !editingTime) {
-      setIsSelected(true);
       handleStartEditing();
-      // Remove selection after a short delay
-      setTimeout(() => setIsSelected(false), 100);
     }
   };
 
@@ -253,7 +249,7 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
     }
   };
 
-  const isOverdue = task.deadline && new Date(task.deadline) < new Date() && !task.completed;
+  const isOverdue = task.deadline && new Date(task.deadline + 'T23:59:59') < new Date() && !task.completed;
   const deadlineClass = isOverdue ? 'text-red-500' : 'text-gray-500';
 
   const getRecurrenceDisplay = () => {
@@ -299,6 +295,14 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
       }
       return part;
     });
+  };
+
+  // Get initial focus date for calendar
+  const getInitialCalendarMonth = () => {
+    if (task.deadline) {
+      return new Date(task.deadline + 'T12:00:00');
+    }
+    return new Date();
   };
 
   return (
@@ -397,24 +401,28 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
                     >
                       <Calendar className="h-3 w-3 mr-1" />
                       {task.deadline 
-                        ? format(new Date(task.deadline), 'd MMM yyyy', { locale: ru })
+                        ? format(new Date(task.deadline + 'T12:00:00'), 'd MMM yyyy', { locale: ru })
                         : 'Дата'
                       }
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
+                  <PopoverContent className="w-auto p-0 popover-content" align="start" onDoubleClick={(e) => e.stopPropagation()}>
                     <div className="p-3">
                       <Input
                         type="date"
                         value={manualDate}
                         onChange={handleManualDateChange}
                         className="mb-2"
+                        dir="ltr"
                       />
                       <CalendarComponent
                         mode="single"
-                        selected={task.deadline ? new Date(task.deadline + 'T00:00:00') : undefined}
+                        selected={task.deadline ? new Date(task.deadline + 'T12:00:00') : undefined}
                         onSelect={handleDateSelect}
+                        defaultMonth={getInitialCalendarMonth()}
                         initialFocus
+                        locale={ru}
+                        weekStartsOn={1}
                         className="pointer-events-auto"
                       />
                     </div>

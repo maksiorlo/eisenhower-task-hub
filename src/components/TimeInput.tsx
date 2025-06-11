@@ -38,25 +38,32 @@ export function TimeInput({ value = '', onChange, onFinish, placeholder = 'ЧЧ:
     return h >= 0 && h <= 23 && m >= 0 && m <= 59;
   };
 
-  const formatTime = (input: string) => {
+  const formatTime = (input: string, cursorPosition: number = 0) => {
     // Remove all non-digits
     const digits = input.replace(/\D/g, '');
     
     if (digits.length === 0) return '';
-    if (digits.length === 1) return `0${digits}:`;
-    if (digits.length === 2) return `${digits}:`;
-    if (digits.length === 3) return `${digits.slice(0, 2)}:${digits.slice(2, 3)}`;
+    
+    let formatted = '';
+    if (digits.length >= 1) {
+      formatted += digits[0];
+    }
+    if (digits.length >= 2) {
+      formatted += digits[1] + ':';
+    }
+    if (digits.length >= 3) {
+      formatted += digits[2];
+    }
     if (digits.length >= 4) {
-      const hours = digits.slice(0, 2);
-      const minutes = digits.slice(2, 4);
-      return `${hours}:${minutes}`;
+      formatted += digits[3];
     }
     
-    return digits;
+    return formatted;
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
+    const cursorPosition = e.target.selectionStart || 0;
     
     // Allow deletion
     if (newValue.length < displayValue.length) {
@@ -67,7 +74,18 @@ export function TimeInput({ value = '', onChange, onFinish, placeholder = 'ЧЧ:
       return;
     }
     
-    const formatted = formatTime(newValue);
+    // Only allow digits and colon
+    if (!/^[\d:]*$/.test(newValue)) {
+      return;
+    }
+    
+    const formatted = formatTime(newValue, cursorPosition);
+    
+    // Don't allow more than 5 characters (HH:MM)
+    if (formatted.length > 5) {
+      return;
+    }
+    
     setDisplayValue(formatted);
     
     // Only save if it's a complete valid time or empty
@@ -88,6 +106,19 @@ export function TimeInput({ value = '', onChange, onFinish, placeholder = 'ЧЧ:
       e.preventDefault();
       setDisplayValue(value || '');
       onFinish?.();
+    }
+    
+    // Handle backspace to remove colon properly
+    if (e.key === 'Backspace') {
+      const cursorPosition = (e.target as HTMLInputElement).selectionStart || 0;
+      if (cursorPosition === 3 && displayValue[2] === ':') {
+        e.preventDefault();
+        const newValue = displayValue.slice(0, 2);
+        setDisplayValue(newValue);
+        if (newValue === '') {
+          onChange('');
+        }
+      }
     }
   };
 
@@ -110,6 +141,7 @@ export function TimeInput({ value = '', onChange, onFinish, placeholder = 'ЧЧ:
       placeholder={placeholder}
       className={className}
       maxLength={5}
+      style={{ direction: 'ltr' }}
     />
   );
 }

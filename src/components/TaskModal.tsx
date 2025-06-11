@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { TimeInput } from './TimeInput';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
-import { Calendar } from 'lucide-react';
+import { Calendar, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
@@ -45,7 +45,7 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
       setDeadlineTime('');
       setQuadrant(defaultQuadrant || 'urgent-important');
     }
-  }, [task, defaultQuadrant]);
+  }, [task, defaultQuadrant, isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,7 +79,7 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
 
   const handleDateSelect = (date: Date | undefined) => {
     if (date) {
-      // Fix timezone issue by creating date string manually
+      // Create date string in local timezone
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
@@ -108,6 +108,17 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
     const lines = description.split('\n').length;
     return Math.max(8, Math.min(lines + 2, 15));
   };
+
+  // Get initial focus date for calendar
+  const getInitialCalendarMonth = () => {
+    if (deadline) {
+      return new Date(deadline + 'T12:00:00');
+    }
+    return new Date();
+  };
+
+  const isOverdue = deadline && new Date(deadline + 'T23:59:59') < new Date();
+  const deadlineClass = isOverdue ? 'text-red-500' : 'text-gray-500';
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -154,24 +165,28 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
                   >
                     <Calendar className="h-4 w-4 mr-2" />
                     {deadline 
-                      ? format(new Date(deadline + 'T00:00:00'), 'd MMM yyyy', { locale: ru })
+                      ? format(new Date(deadline + 'T12:00:00'), 'd MMM yyyy', { locale: ru })
                       : 'Выберите дату'
                     }
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
+                <PopoverContent className="w-auto p-0" align="start" onDoubleClick={(e) => e.stopPropagation()}>
                   <div className="p-3">
                     <Input
                       type="date"
                       value={deadline}
                       onChange={handleManualDateChange}
                       className="mb-2"
+                      dir="ltr"
                     />
                     <CalendarComponent
                       mode="single"
-                      selected={deadline ? new Date(deadline + 'T00:00:00') : undefined}
+                      selected={deadline ? new Date(deadline + 'T12:00:00') : undefined}
                       onSelect={handleDateSelect}
+                      defaultMonth={getInitialCalendarMonth()}
                       initialFocus
+                      locale={ru}
+                      weekStartsOn={1}
                       className="pointer-events-auto"
                     />
                   </div>
@@ -181,12 +196,15 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
 
             <div>
               <Label htmlFor="deadlineTime">Время</Label>
-              <TimeInput
-                value={deadlineTime}
-                onChange={setDeadlineTime}
-                className="text-base h-10"
-                placeholder="ЧЧ:ММ"
-              />
+              <div className="flex items-center gap-1">
+                <Clock className={`h-3 w-3 ${deadlineClass}`} />
+                <TimeInput
+                  value={deadlineTime}
+                  onChange={setDeadlineTime}
+                  className="text-base h-10 flex-1"
+                  placeholder="--:--"
+                />
+              </div>
             </div>
 
             <div>
