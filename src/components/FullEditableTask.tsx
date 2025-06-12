@@ -26,14 +26,24 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
     title: task.title,
     description: task.description || '',
     deadline: task.deadline || '',
-    time: task.deadline ? format(parseISO(task.deadline), 'HH:mm') : ''
+    deadlineTime: task.deadlineTime || ''
   });
   const [showCalendar, setShowCalendar] = useState(false);
 
   const titleRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
+  const timeInputRef = useRef<HTMLInputElement>(null);
 
-  // Prevent any flicker by managing state carefully
+  // Update temp values when task changes
+  useEffect(() => {
+    setTempValues({
+      title: task.title,
+      description: task.description || '',
+      deadline: task.deadline || '',
+      deadlineTime: task.deadlineTime || ''
+    });
+  }, [task]);
+
   const isEditing = (field: string) => editingField === field;
 
   const startEdit = (field: string, e?: React.MouseEvent) => {
@@ -42,11 +52,10 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
       e.stopPropagation();
     }
     
-    if (editingField === field) return; // Already editing this field
+    if (editingField === field) return;
     
     setEditingField(field);
     
-    // Focus after state update
     setTimeout(() => {
       if (field === 'title' && titleRef.current) {
         titleRef.current.focus();
@@ -69,25 +78,33 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
       } else if (field === 'description') {
         updatedTask.description = tempValues.description.trim();
       } else if (field === 'time' || field === 'deadline') {
-        // Handle time update
-        if (tempValues.deadline && tempValues.time) {
-          const [hours, minutes] = tempValues.time.split(':');
-          const date = parseISO(tempValues.deadline);
+        if (tempValues.deadline && tempValues.deadlineTime) {
+          // Create date with time
+          const date = new Date(tempValues.deadline + 'T00:00:00');
+          const [hours, minutes] = tempValues.deadlineTime.split(':');
           date.setHours(parseInt(hours), parseInt(minutes));
           updatedTask.deadline = date.toISOString();
-        } else if (tempValues.deadline && !tempValues.time) {
-          updatedTask.deadline = tempValues.deadline;
+          updatedTask.deadlineTime = tempValues.deadlineTime;
+        } else if (tempValues.deadline && !tempValues.deadlineTime) {
+          // Date only
+          const date = new Date(tempValues.deadline + 'T00:00:00');
+          updatedTask.deadline = date.toISOString();
+          updatedTask.deadlineTime = '';
+        } else if (!tempValues.deadline) {
+          // Clear deadline
+          updatedTask.deadline = '';
+          updatedTask.deadlineTime = '';
         }
       }
       
       await actions.updateTask(updatedTask);
+      onEdit(updatedTask);
     } else {
-      // Reset to original values
       setTempValues({
         title: task.title,
         description: task.description || '',
         deadline: task.deadline || '',
-        time: task.deadline ? format(parseISO(task.deadline), 'HH:mm') : ''
+        deadlineTime: task.deadlineTime || ''
       });
     }
     
@@ -106,10 +123,12 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
 
   const handleToggleComplete = async (checked: boolean | string) => {
     const newCompleted = checked === true;
-    await actions.updateTask({
+    const updatedTask = {
       ...task,
       completed: newCompleted,
-    });
+    };
+    await actions.updateTask(updatedTask);
+    onEdit(updatedTask);
   };
 
   const handleDelete = async (e: React.MouseEvent) => {
@@ -121,20 +140,21 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
 
   const handleDateSelect = async (date: Date | undefined) => {
     if (date) {
-      // Create date in local timezone to avoid timezone issues
       const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-      const newDeadline = localDate.toISOString();
+      const newDeadline = localDate.toISOString().split('T')[0];
       
       setTempValues(prev => ({ ...prev, deadline: newDeadline }));
       
-      let updatedTask = { ...task, deadline: newDeadline };
-      if (tempValues.time) {
-        const [hours, minutes] = tempValues.time.split(':');
-        localDate.setHours(parseInt(hours), parseInt(minutes));
-        updatedTask.deadline = localDate.toISOString();
+      let updatedTask = { ...task, deadline: new Date(newDeadline + 'T00:00:00').toISOString(), deadlineTime: tempValues.deadlineTime };
+      if (tempValues.deadlineTime) {
+        const [hours, minutes] = tempValues.deadlineTime.split(':');
+        const dateWithTime = new Date(newDeadline + 'T00:00:00');
+        dateWithTime.setHours(parseInt(hours), parseInt(minutes));
+        updatedTask.deadline = dateWithTime.toISOString();
       }
       
       await actions.updateTask(updatedTask);
+      onEdit(updatedTask);
     }
     setShowCalendar(false);
   };
@@ -148,13 +168,14 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
       try {
         const date = new Date(tempValues.deadline + 'T00:00:00');
         if (!isNaN(date.getTime())) {
-          let updatedTask = { ...task, deadline: date.toISOString() };
-          if (tempValues.time) {
-            const [hours, minutes] = tempValues.time.split(':');
+          let updatedTask = { ...task, deadline: date.toISOString(), deadlineTime: tempValues.deadlineTime };
+          if (tempValues.deadlineTime) {
+            const [hours, minutes] = tempValues.deadlineTime.split(':');
             date.setHours(parseInt(hours), parseInt(minutes));
             updatedTask.deadline = date.toISOString();
           }
           await actions.updateTask(updatedTask);
+          onEdit(updatedTask);
         }
       } catch (error) {
         console.error('Invalid date:', error);
@@ -167,34 +188,31 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
   };
 
   const isOverdue = task.deadline && new Date(task.deadline) < new Date() && !task.completed;
-  const deadlineClass = isOverdue ? 'text-red-500' : 'text-gray-500';
 
-  // Render deadline display
   const renderDeadlineDisplay = () => {
     if (!task.deadline) {
       return (
-        <div className={`text-xs ${deadlineClass}`}>
-          <span className={isOverdue ? 'text-red-500' : 'text-gray-500'}>--:--</span>
+        <div className="text-xs text-gray-500">
+          <span>--:--</span>
         </div>
       );
     }
 
     const date = parseISO(task.deadline);
-    const timeStr = format(date, 'HH:mm');
+    const timeStr = task.deadlineTime || (format(date, 'HH:mm') !== '00:00' ? format(date, 'HH:mm') : '');
     const dateStr = format(date, 'd MMM yyyy', { locale: ru });
 
     return (
-      <div className={`text-xs ${deadlineClass}`}>
+      <div className={`text-xs ${isOverdue ? 'text-red-500' : 'text-gray-500'}`}>
         <span>до {dateStr}</span>
-        {timeStr !== '00:00' && (
+        {timeStr ? (
           <span 
             className={`ml-2 cursor-pointer hover:bg-gray-100 px-1 rounded ${isOverdue ? 'text-red-500' : 'text-gray-500'}`}
             onClick={(e) => startEdit('time', e)}
           >
             {timeStr}
           </span>
-        )}
-        {timeStr === '00:00' && (
+        ) : (
           <span 
             className={`ml-2 cursor-pointer hover:bg-gray-100 px-1 rounded ${isOverdue ? 'text-red-500' : 'text-gray-500'}`}
             onClick={(e) => startEdit('time', e)}
@@ -206,7 +224,6 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
     );
   };
 
-  // Get current date for calendar
   const getCurrentMonth = () => {
     if (task.deadline) {
       return parseISO(task.deadline);
@@ -216,7 +233,7 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
 
   return (
     <div
-      className={`p-3 bg-white border rounded-lg shadow-sm hover:shadow-md transition-all duration-200 ${
+      className={`p-3 bg-white border rounded-lg shadow-sm hover:shadow-md transition-all duration-200 group ${
         task.completed ? 'opacity-60' : ''
       }`}
       draggable={!editingField}
@@ -277,7 +294,7 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
               onClick={(e) => startEdit('description', e)}
               style={{
                 display: '-webkit-box',
-                WebkitLineClamp: 6,
+                WebkitLineClamp: 3,
                 WebkitBoxOrient: 'vertical',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis'
@@ -291,8 +308,8 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
           {isEditing('time') ? (
             <div className="mt-2">
               <TimeInput
-                value={tempValues.time}
-                onChange={(value) => setTempValues(prev => ({ ...prev, time: value }))}
+                value={tempValues.deadlineTime}
+                onChange={(value) => setTempValues(prev => ({ ...prev, deadlineTime: value }))}
                 onFinish={handleTimeFinish}
                 className="text-xs h-6 w-16"
                 autoFocus
