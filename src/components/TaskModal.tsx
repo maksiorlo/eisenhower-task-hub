@@ -12,7 +12,7 @@ import { TimeInput } from './TimeInput';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Calendar, Clock } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
 interface TaskModalProps {
@@ -30,6 +30,50 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
   const [deadlineTime, setDeadlineTime] = useState('');
   const [quadrant, setQuadrant] = useState<Task['quadrant']>('urgent-important');
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+
+  // Helper function to safely format dates
+  const formatDeadlineDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString + 'T12:00:00');
+      if (isValid(date)) {
+        return format(date, 'd MMM yyyy', { locale: ru });
+      }
+      return 'Выберите дату';
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Выберите дату';
+    }
+  };
+
+  // Helper function to get initial calendar month safely
+  const getInitialCalendarMonth = () => {
+    if (deadline) {
+      try {
+        const date = new Date(deadline + 'T12:00:00');
+        if (isValid(date)) {
+          return date;
+        }
+      } catch (error) {
+        console.error('Error parsing deadline for calendar:', error);
+      }
+    }
+    return new Date();
+  };
+
+  // Helper function to get selected date for calendar safely
+  const getSelectedDate = () => {
+    if (deadline) {
+      try {
+        const date = new Date(deadline + 'T12:00:00');
+        if (isValid(date)) {
+          return date;
+        }
+      } catch (error) {
+        console.error('Error parsing deadline for selection:', error);
+      }
+    }
+    return undefined;
+  };
 
   useEffect(() => {
     if (task) {
@@ -109,14 +153,6 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
     return Math.max(8, Math.min(lines + 2, 15));
   };
 
-  // Get initial focus date for calendar
-  const getInitialCalendarMonth = () => {
-    if (deadline) {
-      return new Date(deadline + 'T12:00:00');
-    }
-    return new Date();
-  };
-
   const isOverdue = deadline && new Date(deadline + 'T23:59:59') < new Date();
   const deadlineClass = isOverdue ? 'text-red-500' : 'text-gray-500';
 
@@ -165,7 +201,7 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
                   >
                     <Calendar className="h-4 w-4 mr-2" />
                     {deadline 
-                      ? format(new Date(deadline + 'T12:00:00'), 'd MMM yyyy', { locale: ru })
+                      ? formatDeadlineDate(deadline)
                       : 'Выберите дату'
                     }
                   </Button>
@@ -181,7 +217,7 @@ export function TaskModal({ task, isOpen, onClose, defaultQuadrant }: TaskModalP
                     />
                     <CalendarComponent
                       mode="single"
-                      selected={deadline ? new Date(deadline + 'T12:00:00') : undefined}
+                      selected={getSelectedDate()}
                       onSelect={handleDateSelect}
                       defaultMonth={getInitialCalendarMonth()}
                       initialFocus
