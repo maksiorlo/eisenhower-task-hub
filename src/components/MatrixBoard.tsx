@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Task } from '../services/StorageService';
 import { useApp } from '../contexts/AppContext';
@@ -206,6 +205,10 @@ export function MatrixBoard() {
     }
   };
 
+  const handleEditTask = (task: Task) => {
+    // Task is already updated through the context, no additional action needed
+  };
+
   const quadrants = [
     {
       id: 'urgent-important' as const,
@@ -286,6 +289,7 @@ export function MatrixBoard() {
                     >
                       <FullEditableTask
                         task={task}
+                        onEdit={handleEditTask}
                         onDragStart={handleDragStart}
                       />
                     </div>

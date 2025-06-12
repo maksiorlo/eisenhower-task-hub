@@ -32,7 +32,6 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
 
   const titleRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
-  const timeRef = useRef<HTMLInputElement>(null);
 
   // Prevent any flicker by managing state carefully
   const isEditing = (field: string) => editingField === field;
@@ -55,9 +54,6 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
       } else if (field === 'description' && descriptionRef.current) {
         descriptionRef.current.focus();
         descriptionRef.current.select();
-      } else if (field === 'time' && timeRef.current) {
-        timeRef.current.focus();
-        timeRef.current.select();
       }
     }, 0);
   };
@@ -108,11 +104,11 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
     }
   };
 
-  const handleToggleComplete = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleToggleComplete = async (checked: boolean | string) => {
+    const newCompleted = checked === true;
     await actions.updateTask({
       ...task,
-      completed: !task.completed,
+      completed: newCompleted,
     });
   };
 
@@ -125,15 +121,17 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
 
   const handleDateSelect = async (date: Date | undefined) => {
     if (date) {
-      const newDeadline = date.toISOString().split('T')[0] + 'T00:00:00.000Z';
+      // Create date in local timezone to avoid timezone issues
+      const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const newDeadline = localDate.toISOString();
+      
       setTempValues(prev => ({ ...prev, deadline: newDeadline }));
       
       let updatedTask = { ...task, deadline: newDeadline };
       if (tempValues.time) {
         const [hours, minutes] = tempValues.time.split(':');
-        const fullDate = new Date(date);
-        fullDate.setHours(parseInt(hours), parseInt(minutes));
-        updatedTask.deadline = fullDate.toISOString();
+        localDate.setHours(parseInt(hours), parseInt(minutes));
+        updatedTask.deadline = localDate.toISOString();
       }
       
       await actions.updateTask(updatedTask);
@@ -148,7 +146,7 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
   const handleManualDateFinish = async () => {
     if (tempValues.deadline) {
       try {
-        const date = new Date(tempValues.deadline);
+        const date = new Date(tempValues.deadline + 'T00:00:00');
         if (!isNaN(date.getTime())) {
           let updatedTask = { ...task, deadline: date.toISOString() };
           if (tempValues.time) {
@@ -162,6 +160,10 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
         console.error('Invalid date:', error);
       }
     }
+  };
+
+  const handleTimeFinish = async () => {
+    await finishEdit('time', true);
   };
 
   const isOverdue = task.deadline && new Date(task.deadline) < new Date() && !task.completed;
@@ -224,7 +226,6 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
         <Checkbox
           checked={task.completed}
           onCheckedChange={handleToggleComplete}
-          onClick={(e) => e.stopPropagation()}
           className="mt-0.5 flex-shrink-0"
         />
         
@@ -290,10 +291,9 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
           {isEditing('time') ? (
             <div className="mt-2">
               <TimeInput
-                ref={timeRef}
                 value={tempValues.time}
                 onChange={(value) => setTempValues(prev => ({ ...prev, time: value }))}
-                onFinish={() => finishEdit('time', true)}
+                onFinish={handleTimeFinish}
                 className="text-xs h-6 w-16"
                 autoFocus
               />
@@ -310,7 +310,7 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
                   <CalendarIcon className="h-3 w-3" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
+              <PopoverContent className="w-auto p-0" align="start" onDoubleClick={(e) => e.stopPropagation()}>
                 <div className="p-3 space-y-2">
                   <Input
                     type="date"
@@ -318,6 +318,7 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
                     onChange={(e) => handleManualDateInput(e.target.value)}
                     onBlur={handleManualDateFinish}
                     className="text-xs"
+                    style={{ direction: 'ltr' }}
                   />
                   <Calendar
                     mode="single"
