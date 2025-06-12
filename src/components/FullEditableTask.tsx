@@ -1,12 +1,12 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { Task } from '../services/StorageService';
 import { useApp } from '../contexts/AppContext';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Trash2, Calendar as CalendarIcon } from 'lucide-react';
+import { Trash2, Calendar as CalendarIcon, Clock, Repeat, Edit } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { Calendar } from '@/components/ui/calendar';
@@ -32,17 +32,6 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
 
   const titleRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
-  const timeInputRef = useRef<HTMLInputElement>(null);
-
-  // Update temp values when task changes
-  useEffect(() => {
-    setTempValues({
-      title: task.title,
-      description: task.description || '',
-      deadline: task.deadline || '',
-      deadlineTime: task.deadlineTime || ''
-    });
-  }, [task]);
 
   const isEditing = (field: string) => editingField === field;
 
@@ -53,6 +42,14 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
     }
     
     if (editingField === field) return;
+    
+    // Initialize temp values when starting to edit
+    setTempValues({
+      title: task.title,
+      description: task.description || '',
+      deadline: task.deadline || '',
+      deadlineTime: task.deadlineTime || ''
+    });
     
     setEditingField(field);
     
@@ -79,19 +76,16 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
         updatedTask.description = tempValues.description.trim();
       } else if (field === 'time' || field === 'deadline') {
         if (tempValues.deadline && tempValues.deadlineTime) {
-          // Create date with time
           const date = new Date(tempValues.deadline + 'T00:00:00');
           const [hours, minutes] = tempValues.deadlineTime.split(':');
           date.setHours(parseInt(hours), parseInt(minutes));
           updatedTask.deadline = date.toISOString();
           updatedTask.deadlineTime = tempValues.deadlineTime;
         } else if (tempValues.deadline && !tempValues.deadlineTime) {
-          // Date only
           const date = new Date(tempValues.deadline + 'T00:00:00');
           updatedTask.deadline = date.toISOString();
           updatedTask.deadlineTime = '';
         } else if (!tempValues.deadline) {
-          // Clear deadline
           updatedTask.deadline = '';
           updatedTask.deadlineTime = '';
         }
@@ -99,13 +93,6 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
       
       await actions.updateTask(updatedTask);
       onEdit(updatedTask);
-    } else {
-      setTempValues({
-        title: task.title,
-        description: task.description || '',
-        deadline: task.deadline || '',
-        deadlineTime: task.deadlineTime || ''
-      });
     }
     
     setEditingField(null);
@@ -143,11 +130,9 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
       const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
       const newDeadline = localDate.toISOString().split('T')[0];
       
-      setTempValues(prev => ({ ...prev, deadline: newDeadline }));
-      
-      let updatedTask = { ...task, deadline: new Date(newDeadline + 'T00:00:00').toISOString(), deadlineTime: tempValues.deadlineTime };
-      if (tempValues.deadlineTime) {
-        const [hours, minutes] = tempValues.deadlineTime.split(':');
+      let updatedTask = { ...task, deadline: new Date(newDeadline + 'T00:00:00').toISOString(), deadlineTime: task.deadlineTime || '' };
+      if (task.deadlineTime) {
+        const [hours, minutes] = task.deadlineTime.split(':');
         const dateWithTime = new Date(newDeadline + 'T00:00:00');
         dateWithTime.setHours(parseInt(hours), parseInt(minutes));
         updatedTask.deadline = dateWithTime.toISOString();
@@ -159,32 +144,16 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
     setShowCalendar(false);
   };
 
-  const handleManualDateInput = (value: string) => {
-    setTempValues(prev => ({ ...prev, deadline: value }));
-  };
-
-  const handleManualDateFinish = async () => {
-    if (tempValues.deadline) {
-      try {
-        const date = new Date(tempValues.deadline + 'T00:00:00');
-        if (!isNaN(date.getTime())) {
-          let updatedTask = { ...task, deadline: date.toISOString(), deadlineTime: tempValues.deadlineTime };
-          if (tempValues.deadlineTime) {
-            const [hours, minutes] = tempValues.deadlineTime.split(':');
-            date.setHours(parseInt(hours), parseInt(minutes));
-            updatedTask.deadline = date.toISOString();
-          }
-          await actions.updateTask(updatedTask);
-          onEdit(updatedTask);
-        }
-      } catch (error) {
-        console.error('Invalid date:', error);
-      }
+  const handleTimeUpdate = async (time: string) => {
+    let updatedTask = { ...task, deadlineTime: time };
+    if (task.deadline && time) {
+      const date = new Date(task.deadline);
+      const [hours, minutes] = time.split(':');
+      date.setHours(parseInt(hours), parseInt(minutes));
+      updatedTask.deadline = date.toISOString();
     }
-  };
-
-  const handleTimeFinish = async () => {
-    await finishEdit('time', true);
+    await actions.updateTask(updatedTask);
+    onEdit(updatedTask);
   };
 
   const isOverdue = task.deadline && new Date(task.deadline) < new Date() && !task.completed;
@@ -229,6 +198,28 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
       return parseISO(task.deadline);
     }
     return new Date();
+  };
+
+  const getRecurrenceDisplay = () => {
+    if (!task.isRecurring || !task.recurrencePattern) return null;
+    
+    const pattern = task.recurrencePattern;
+    switch (pattern.type) {
+      case 'daily':
+        return pattern.interval === 1 ? 'ежедневно' : `каждые ${pattern.interval} дня`;
+      case 'weekly':
+        return 'еженедельно';
+      case 'weekdays':
+        return 'по будням';
+      case 'weekends':
+        return 'по выходным';
+      case 'custom':
+        const days = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+        const selectedDays = pattern.daysOfWeek?.map(day => days[day]).join(', ');
+        return selectedDays ? `по: ${selectedDays}` : 'настраиваемое';
+      default:
+        return 'повтор';
+    }
   };
 
   return (
@@ -310,55 +301,78 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
               <TimeInput
                 value={tempValues.deadlineTime}
                 onChange={(value) => setTempValues(prev => ({ ...prev, deadlineTime: value }))}
-                onFinish={handleTimeFinish}
+                onFinish={() => finishEdit('time', true)}
                 className="text-xs h-6 w-16"
                 autoFocus
               />
             </div>
           ) : null}
           
-          {/* Deadline */}
+          {/* Deadline and interactive elements */}
           <div className="mt-2 flex items-center gap-2">
             {!isEditing('time') && renderDeadlineDisplay()}
             
+            {/* Calendar button */}
             <Popover open={showCalendar} onOpenChange={setShowCalendar}>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100">
                   <CalendarIcon className="h-3 w-3" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start" onDoubleClick={(e) => e.stopPropagation()}>
-                <div className="p-3 space-y-2">
-                  <Input
-                    type="date"
-                    value={tempValues.deadline ? tempValues.deadline.split('T')[0] : ''}
-                    onChange={(e) => handleManualDateInput(e.target.value)}
-                    onBlur={handleManualDateFinish}
-                    className="text-xs"
-                    style={{ direction: 'ltr' }}
-                  />
-                  <Calendar
-                    mode="single"
-                    selected={tempValues.deadline ? parseISO(tempValues.deadline) : undefined}
-                    onSelect={handleDateSelect}
-                    defaultMonth={getCurrentMonth()}
-                    locale={ru}
-                    weekStartsOn={1}
-                  />
-                </div>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={task.deadline ? parseISO(task.deadline) : undefined}
+                  onSelect={handleDateSelect}
+                  defaultMonth={getCurrentMonth()}
+                  locale={ru}
+                  weekStartsOn={1}
+                />
               </PopoverContent>
             </Popover>
+
+            {/* Time button */}
+            {task.deadline && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-6 px-2 text-xs opacity-0 group-hover:opacity-100"
+                onClick={(e) => startEdit('time', e)}
+              >
+                <Clock className="h-3 w-3 mr-1" />
+                {task.deadlineTime || '--:--'}
+              </Button>
+            )}
+
+            {/* Recurrence button */}
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className={`h-6 px-2 text-xs opacity-0 group-hover:opacity-100 ${task.isRecurring ? 'text-blue-600' : 'text-gray-500'}`}
+            >
+              <Repeat className="h-3 w-3 mr-1" />
+              {task.isRecurring ? getRecurrenceDisplay() : 'Повтор'}
+            </Button>
           </div>
         </div>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleDelete}
-          className="p-1 h-auto opacity-0 group-hover:opacity-100 hover:bg-red-100 flex-shrink-0"
-        >
-          <Trash2 className="h-3 w-3 text-red-500" />
-        </Button>
+        <div className="flex gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="p-1 h-auto opacity-0 group-hover:opacity-100 hover:bg-blue-100 flex-shrink-0"
+          >
+            <Edit className="h-3 w-3 text-blue-500" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleDelete}
+            className="p-1 h-auto opacity-0 group-hover:opacity-100 hover:bg-red-100 flex-shrink-0"
+          >
+            <Trash2 className="h-3 w-3 text-red-500" />
+          </Button>
+        </div>
       </div>
     </div>
   );
