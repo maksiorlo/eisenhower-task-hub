@@ -1,204 +1,256 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Task } from '../services/StorageService';
 import { useApp } from '../contexts/AppContext';
+import { useUndo } from '../contexts/UndoContext';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Trash2, Calendar as CalendarIcon, Clock, Repeat, Edit } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
-import { ru } from 'date-fns/locale';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Input } from '@/components/ui/input';
 import { TimeInput } from './TimeInput';
+import { TaskModal } from './TaskModal';
+import { Trash2, Calendar, Clock, Repeat, Edit } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { RecurrenceSettings } from './RecurrenceSettings';
+import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
 
 interface FullEditableTaskProps {
   task: Task;
-  onEdit: (task: Task) => void;
   onDragStart?: (e: React.DragEvent, task: Task) => void;
 }
 
-export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTaskProps) {
+export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
   const { actions } = useApp();
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const [tempValues, setTempValues] = useState({
-    title: task.title,
-    description: task.description || '',
-    deadline: task.deadline || '',
-    deadlineTime: task.deadlineTime || ''
-  });
-  const [showCalendar, setShowCalendar] = useState(false);
-
-  const titleRef = useRef<HTMLInputElement>(null);
+  const { actions: undoActions } = useUndo();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingTime, setEditingTime] = useState(false);
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [isRecurrenceOpen, setIsRecurrenceOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [title, setTitle] = useState(task.title);
+  const [description, setDescription] = useState(task.description || '');
+  const [manualDate, setManualDate] = useState(task.deadline || '');
+  const titleRef = useRef<HTMLTextAreaElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
-  const isEditing = (field: string) => editingField === field;
+  // Handle keyboard shortcuts for task deletion
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Backspace' && !isEditing && !editingTime) {
+        const activeElement = document.activeElement;
+        if (activeElement === document.body || cardRef.current?.contains(activeElement)) {
+          e.preventDefault();
+          handleDelete();
+        }
+      }
+      if (e.key === 'Enter' && editingTime) {
+        e.preventDefault();
+        setEditingTime(false);
+      }
+    };
 
-  const startEdit = (field: string, e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isEditing, editingTime]);
+
+  // Handle click outside to save changes
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isEditing && cardRef.current && !cardRef.current.contains(event.target as Node)) {
+        handleSave();
+      }
+      if (editingTime && cardRef.current && !cardRef.current.contains(event.target as Node)) {
+        setEditingTime(false);
+      }
+    };
+
+    if (isEditing || editingTime) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-    
-    if (editingField === field) return;
-    
-    // Initialize temp values when starting to edit
-    setTempValues({
-      title: task.title,
-      description: task.description || '',
-      deadline: task.deadline || '',
-      deadlineTime: task.deadlineTime || ''
-    });
-    
-    setEditingField(field);
-    
+  }, [isEditing, editingTime, title, description]);
+
+  const handleToggleComplete = async () => {
+    const updatedTask = {
+      ...task,
+      completed: !task.completed,
+    };
+
+    await actions.updateTask(updatedTask);
+
+    // Create recurring task if this task is completed and has recurrence
+    if (!task.completed && task.isRecurring && task.recurrencePattern) {
+      try {
+        await actions.createRecurringTask(task);
+      } catch (error) {
+        console.error('Failed to create recurring task:', error);
+      }
+    }
+  };
+
+  const handleDelete = async () => {
+    undoActions.addDeletedTask(task);
+    await actions.deleteTask(task.id);
+  };
+
+  const handleStartEditing = () => {
+    setIsEditing(true);
+    setTitle(task.title);
+    setDescription(task.description || '');
     setTimeout(() => {
-      if (field === 'title' && titleRef.current) {
-        titleRef.current.focus();
-        titleRef.current.select();
-      } else if (field === 'description' && descriptionRef.current) {
-        descriptionRef.current.focus();
-        descriptionRef.current.select();
+      titleRef.current?.focus();
+      // Adjust height for existing content
+      if (titleRef.current) {
+        titleRef.current.style.height = 'auto';
+        titleRef.current.style.height = titleRef.current.scrollHeight + 'px';
+      }
+      if (descriptionRef.current) {
+        descriptionRef.current.style.height = 'auto';
+        const lines = description.split('\n').length;
+        const maxLines = 6;
+        const lineHeight = 16;
+        const height = Math.min(lines * lineHeight, maxLines * lineHeight);
+        descriptionRef.current.style.height = Math.max(16, height) + 'px';
       }
     }, 0);
   };
 
-  const finishEdit = async (field: string, save: boolean = true) => {
-    if (!isEditing(field)) return;
-    
-    if (save) {
-      let updatedTask = { ...task };
-      
-      if (field === 'title') {
-        updatedTask.title = tempValues.title.trim() || task.title;
-      } else if (field === 'description') {
-        updatedTask.description = tempValues.description.trim();
-      } else if (field === 'time' || field === 'deadline') {
-        if (tempValues.deadline && tempValues.deadlineTime) {
-          const date = new Date(tempValues.deadline + 'T00:00:00');
-          const [hours, minutes] = tempValues.deadlineTime.split(':');
-          date.setHours(parseInt(hours), parseInt(minutes));
-          updatedTask.deadline = date.toISOString();
-          updatedTask.deadlineTime = tempValues.deadlineTime;
-        } else if (tempValues.deadline && !tempValues.deadlineTime) {
-          const date = new Date(tempValues.deadline + 'T00:00:00');
-          updatedTask.deadline = date.toISOString();
-          updatedTask.deadlineTime = '';
-        } else if (!tempValues.deadline) {
-          updatedTask.deadline = '';
-          updatedTask.deadlineTime = '';
-        }
-      }
-      
-      await actions.updateTask(updatedTask);
-      onEdit(updatedTask);
+  const handleSave = async () => {
+    if (title.trim() !== task.title || description !== (task.description || '')) {
+      await actions.updateTask({
+        ...task,
+        title: title.trim() || task.title,
+        description: description.trim() || undefined,
+      });
     }
-    
-    setEditingField(null);
+    setIsEditing(false);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent, field: string) => {
-    if (e.key === 'Enter' && field !== 'description') {
-      e.preventDefault();
-      finishEdit(field, true);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      finishEdit(field, false);
-    }
-  };
-
-  const handleToggleComplete = async (checked: boolean | string) => {
-    const newCompleted = checked === true;
-    const updatedTask = {
-      ...task,
-      completed: newCompleted,
-    };
-    await actions.updateTask(updatedTask);
-    onEdit(updatedTask);
-  };
-
-  const handleDelete = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (confirm('Удалить задачу?')) {
-      await actions.deleteTask(task.id);
-    }
+  const handleCancel = () => {
+    setTitle(task.title);
+    setDescription(task.description || '');
+    setIsEditing(false);
   };
 
   const handleDateSelect = async (date: Date | undefined) => {
     if (date) {
-      const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-      const newDeadline = localDate.toISOString().split('T')[0];
+      // Create date string in local timezone
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const dateString = `${year}-${month}-${day}`;
       
-      let updatedTask = { ...task, deadline: new Date(newDeadline + 'T00:00:00').toISOString(), deadlineTime: task.deadlineTime || '' };
-      if (task.deadlineTime) {
-        const [hours, minutes] = task.deadlineTime.split(':');
-        const dateWithTime = new Date(newDeadline + 'T00:00:00');
-        dateWithTime.setHours(parseInt(hours), parseInt(minutes));
-        updatedTask.deadline = dateWithTime.toISOString();
-      }
-      
-      await actions.updateTask(updatedTask);
-      onEdit(updatedTask);
+      setManualDate(dateString);
+      await actions.updateTask({
+        ...task,
+        deadline: dateString,
+      });
+    } else {
+      setManualDate('');
+      await actions.updateTask({
+        ...task,
+        deadline: undefined,
+      });
     }
-    setShowCalendar(false);
+    setIsDatePickerOpen(false);
+  };
+
+  const handleManualDateChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const dateValue = e.target.value;
+    setManualDate(dateValue);
+    await actions.updateTask({
+      ...task,
+      deadline: dateValue || undefined,
+    });
   };
 
   const handleTimeUpdate = async (time: string) => {
-    let updatedTask = { ...task, deadlineTime: time };
-    if (task.deadline && time) {
-      const date = new Date(task.deadline);
-      const [hours, minutes] = time.split(':');
-      date.setHours(parseInt(hours), parseInt(minutes));
-      updatedTask.deadline = date.toISOString();
-    }
-    await actions.updateTask(updatedTask);
-    onEdit(updatedTask);
+    await actions.updateTask({
+      ...task,
+      deadlineTime: time || undefined,
+    });
   };
 
-  const isOverdue = task.deadline && new Date(task.deadline) < new Date() && !task.completed;
-
-  const renderDeadlineDisplay = () => {
-    if (!task.deadline) {
-      return (
-        <div className="text-xs text-gray-500">
-          <span>--:--</span>
-        </div>
-      );
-    }
-
-    const date = parseISO(task.deadline);
-    const timeStr = task.deadlineTime || (format(date, 'HH:mm') !== '00:00' ? format(date, 'HH:mm') : '');
-    const dateStr = format(date, 'd MMM yyyy', { locale: ru });
-
-    return (
-      <div className={`text-xs ${isOverdue ? 'text-red-500' : 'text-gray-500'}`}>
-        <span>до {dateStr}</span>
-        {timeStr ? (
-          <span 
-            className={`ml-2 cursor-pointer hover:bg-gray-100 px-1 rounded ${isOverdue ? 'text-red-500' : 'text-gray-500'}`}
-            onClick={(e) => startEdit('time', e)}
-          >
-            {timeStr}
-          </span>
-        ) : (
-          <span 
-            className={`ml-2 cursor-pointer hover:bg-gray-100 px-1 rounded ${isOverdue ? 'text-red-500' : 'text-gray-500'}`}
-            onClick={(e) => startEdit('time', e)}
-          >
-            --:--
-          </span>
-        )}
-      </div>
-    );
+  const handleTimeClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingTime(true);
   };
 
-  const getCurrentMonth = () => {
-    if (task.deadline) {
-      return parseISO(task.deadline);
-    }
-    return new Date();
+  const handleRecurrenceUpdate = async (isRecurring: boolean, pattern?: any) => {
+    await actions.updateTask({
+      ...task,
+      isRecurring,
+      recurrencePattern: pattern,
+    });
   };
+
+  const handleDragStartWithData = (e: React.DragEvent) => {
+    // Don't allow drag if editing
+    if (isEditing || editingTime) {
+      e.preventDefault();
+      return;
+    }
+    
+    e.dataTransfer.setData('text/plain', task.id);
+    onDragStart?.(e, task);
+  };
+
+  const handleOpenModal = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsModalOpen(true);
+  };
+
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't start editing if clicking on specific elements
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || 
+        target.closest('[data-time-input]') || 
+        target.closest('[role="dialog"]') ||
+        target.closest('.popover-content') ||
+        target.closest('[data-radix-popper-content-wrapper]')) {
+      return;
+    }
+    
+    if (!isEditing && !editingTime) {
+      handleStartEditing();
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      if (e.shiftKey) {
+        // Allow new line with Shift+Enter
+        return;
+      } else {
+        // Save with Enter
+        e.preventDefault();
+        handleSave();
+      }
+    } else if (e.key === 'Escape') {
+      handleCancel();
+    }
+  };
+
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>, setter: (value: string) => void) => {
+    setter(e.target.value);
+    // Auto-resize textarea with max height limit for description
+    e.target.style.height = 'auto';
+    if (e.target === descriptionRef.current) {
+      const lines = e.target.value.split('\n').length;
+      const maxLines = 6;
+      const lineHeight = 16;
+      const height = Math.min(lines * lineHeight, maxLines * lineHeight);
+      e.target.style.height = Math.max(16, height) + 'px';
+    } else {
+      e.target.style.height = e.target.scrollHeight + 'px';
+    }
+  };
+
+  const isOverdue = task.deadline && new Date(task.deadline + 'T23:59:59') < new Date() && !task.completed;
+  const deadlineClass = isOverdue ? 'text-red-500' : 'text-gray-500';
 
   const getRecurrenceDisplay = () => {
     if (!task.isRecurring || !task.recurrencePattern) return null;
@@ -222,158 +274,237 @@ export function FullEditableTask({ task, onEdit, onDragStart }: FullEditableTask
     }
   };
 
+  const makeLinksClickable = (text: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+    
+    return parts.map((part, index) => {
+      if (urlRegex.test(part)) {
+        return (
+          <a 
+            key={index} 
+            href={part} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-blue-600 underline hover:text-blue-800"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {part}
+          </a>
+        );
+      }
+      return part;
+    });
+  };
+
+  // Get initial focus date for calendar
+  const getInitialCalendarMonth = () => {
+    if (task.deadline) {
+      return new Date(task.deadline + 'T12:00:00');
+    }
+    return new Date();
+  };
+
   return (
-    <div
-      className={`p-3 bg-white border rounded-lg shadow-sm hover:shadow-md transition-all duration-200 group ${
-        task.completed ? 'opacity-60' : ''
-      }`}
-      draggable={!editingField}
-      onDragStart={(e) => !editingField && onDragStart?.(e, task)}
-    >
-      <div className="flex items-start gap-3">
-        <Checkbox
-          checked={task.completed}
-          onCheckedChange={handleToggleComplete}
-          className="mt-0.5 flex-shrink-0"
-        />
-        
-        <div className="flex-1 min-w-0">
-          {/* Title */}
-          {isEditing('title') ? (
-            <Input
-              ref={titleRef}
-              value={tempValues.title}
-              onChange={(e) => setTempValues(prev => ({ ...prev, title: e.target.value }))}
-              onBlur={() => finishEdit('title', true)}
-              onKeyDown={(e) => handleKeyDown(e, 'title')}
-              className="text-sm font-medium mb-1 h-8 p-1"
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <h4 
-              className={`font-medium text-sm cursor-pointer hover:bg-gray-50 p-1 rounded ${
-                task.completed ? 'line-through text-gray-500' : 'text-gray-900'
-              }`}
-              onClick={(e) => startEdit('title', e)}
-            >
-              {task.title}
-            </h4>
-          )}
+    <>
+      <div
+        ref={cardRef}
+        className={`p-3 bg-white border rounded-lg shadow-sm hover:shadow-md transition-all duration-200 group cursor-pointer ${
+          task.completed ? 'opacity-60' : ''
+        }`}
+        draggable={!isEditing && !editingTime}
+        onDragStart={handleDragStartWithData}
+        onClick={handleCardClick}
+      >
+        <div className="flex items-start gap-3">
+          <Checkbox
+            checked={task.completed}
+            onCheckedChange={handleToggleComplete}
+            className="mt-0.5"
+            onClick={(e) => e.stopPropagation()}
+          />
           
-          {/* Description */}
-          {isEditing('description') ? (
-            <Textarea
-              ref={descriptionRef}
-              value={tempValues.description}
-              onChange={(e) => setTempValues(prev => ({ ...prev, description: e.target.value }))}
-              onBlur={() => finishEdit('description', true)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  e.preventDefault();
-                  finishEdit('description', false);
-                }
-              }}
-              className="text-xs mt-1 min-h-[60px] resize-none p-1"
-              placeholder="Описание задачи..."
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <div 
-              className={`text-xs mt-1 cursor-pointer hover:bg-gray-50 p-1 rounded ${
-                task.completed ? 'line-through text-gray-400' : 'text-gray-600'
-              }`}
-              onClick={(e) => startEdit('description', e)}
-              style={{
-                display: '-webkit-box',
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis'
-              }}
-            >
-              {task.description || 'Добавить описание...'}
-            </div>
-          )}
-          
-          {/* Time editing */}
-          {isEditing('time') ? (
-            <div className="mt-2">
-              <TimeInput
-                value={tempValues.deadlineTime}
-                onChange={(value) => setTempValues(prev => ({ ...prev, deadlineTime: value }))}
-                onFinish={() => finishEdit('time', true)}
-                className="text-xs h-6 w-16"
-                autoFocus
-              />
-            </div>
-          ) : null}
-          
-          {/* Deadline and interactive elements */}
-          <div className="mt-2 flex items-center gap-2">
-            {!isEditing('time') && renderDeadlineDisplay()}
-            
-            {/* Calendar button */}
-            <Popover open={showCalendar} onOpenChange={setShowCalendar}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100">
-                  <CalendarIcon className="h-3 w-3" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={task.deadline ? parseISO(task.deadline) : undefined}
-                  onSelect={handleDateSelect}
-                  defaultMonth={getCurrentMonth()}
-                  locale={ru}
-                  weekStartsOn={1}
+          <div className="flex-1 min-w-0">
+            {isEditing ? (
+              <div className="space-y-2">
+                <Textarea
+                  ref={titleRef}
+                  value={title}
+                  onChange={(e) => handleTextareaChange(e, setTitle)}
+                  onKeyDown={handleKeyDown}
+                  className="p-0 border-0 text-sm font-medium resize-none min-h-[20px] focus:outline-none focus:ring-0 focus-visible:ring-0"
+                  placeholder="Название задачи"
+                  style={{ 
+                    height: 'auto',
+                    minHeight: '20px'
+                  }}
                 />
-              </PopoverContent>
-            </Popover>
-
-            {/* Time button */}
-            {task.deadline && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-6 px-2 text-xs opacity-0 group-hover:opacity-100"
-                onClick={(e) => startEdit('time', e)}
-              >
-                <Clock className="h-3 w-3 mr-1" />
-                {task.deadlineTime || '--:--'}
-              </Button>
+                <Textarea
+                  ref={descriptionRef}
+                  value={description}
+                  onChange={(e) => handleTextareaChange(e, setDescription)}
+                  onKeyDown={handleKeyDown}
+                  className="text-xs border-0 p-0 resize-none min-h-[16px] focus:outline-none focus:ring-0 focus-visible:ring-0 overflow-y-auto"
+                  placeholder="Описание задачи..."
+                  style={{ 
+                    height: 'auto',
+                    minHeight: '16px',
+                    maxHeight: '96px'
+                  }}
+                />
+                <div className="flex gap-2 pt-2">
+                  <Button size="sm" onClick={handleSave}>
+                    Сохранить
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleCancel}>
+                    Отмена
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <h4
+                  className={`font-medium text-sm cursor-text break-words whitespace-pre-wrap leading-tight ${
+                    task.completed ? 'line-through text-gray-500' : 'text-gray-900'
+                  }`}
+                >
+                  {makeLinksClickable(task.title)}
+                </h4>
+                
+                {task.description && (
+                  <p
+                    className={`text-xs mt-1 cursor-text break-words whitespace-pre-wrap leading-tight ${
+                      task.completed ? 'line-through text-gray-400' : 'text-gray-600'
+                    }`}
+                    style={{
+                      display: '-webkit-box',
+                      WebkitLineClamp: 6,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden'
+                    }}
+                  >
+                    {makeLinksClickable(task.description)}
+                  </p>
+                )}
+              </>
             )}
+            
+            <div className="flex items-center gap-2 mt-2">
+              <div className="flex items-center gap-1">
+                <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`h-6 px-2 text-xs ${deadlineClass} ${task.completed ? 'line-through' : ''}`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Calendar className="h-3 w-3 mr-1" />
+                      {task.deadline 
+                        ? format(new Date(task.deadline + 'T12:00:00'), 'd MMM yyyy', { locale: ru })
+                        : 'Дата'
+                      }
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0 popover-content" align="start" onDoubleClick={(e) => e.stopPropagation()}>
+                    <div className="p-3">
+                      <Input
+                        type="date"
+                        value={manualDate}
+                        onChange={handleManualDateChange}
+                        className="mb-2"
+                        dir="ltr"
+                      />
+                      <CalendarComponent
+                        mode="single"
+                        selected={task.deadline ? new Date(task.deadline + 'T12:00:00') : undefined}
+                        onSelect={handleDateSelect}
+                        defaultMonth={getInitialCalendarMonth()}
+                        initialFocus
+                        locale={ru}
+                        weekStartsOn={1}
+                        className="pointer-events-auto"
+                      />
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
 
-            {/* Recurrence button */}
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className={`h-6 px-2 text-xs opacity-0 group-hover:opacity-100 ${task.isRecurring ? 'text-blue-600' : 'text-gray-500'}`}
+              {task.deadline && (
+                <div className="flex items-center gap-1" data-time-input>
+                  <Clock className={`h-3 w-3 ${deadlineClass}`} />
+                  {editingTime ? (
+                    <TimeInput
+                      value={task.deadlineTime || ''}
+                      onChange={handleTimeUpdate}
+                      onFinish={() => setEditingTime(false)}
+                      className={`h-6 w-20 text-xs px-2 border focus:bg-white ${deadlineClass}`}
+                      placeholder="ЧЧ:ММ"
+                      autoFocus
+                    />
+                  ) : (
+                    <span
+                      onClick={handleTimeClick}
+                      className={`h-6 w-20 text-xs px-2 cursor-pointer hover:bg-gray-100 rounded flex items-center ${deadlineClass}`}
+                    >
+                      {task.deadlineTime || '--:--'}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <Popover open={isRecurrenceOpen} onOpenChange={setIsRecurrenceOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`h-6 px-2 text-xs ${task.isRecurring ? 'text-blue-600' : 'text-gray-500'}`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Repeat className="h-3 w-3 mr-1" />
+                    {task.isRecurring ? getRecurrenceDisplay() : 'Повтор'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-3" align="start">
+                  <RecurrenceSettings
+                    isRecurring={task.isRecurring || false}
+                    pattern={task.recurrencePattern}
+                    onRecurrenceChange={handleRecurrenceUpdate}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+
+          <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleOpenModal}
+              className="p-1 h-auto opacity-0 group-hover:opacity-100 hover:bg-blue-100"
             >
-              <Repeat className="h-3 w-3 mr-1" />
-              {task.isRecurring ? getRecurrenceDisplay() : 'Повтор'}
+              <Edit className="h-3 w-3 text-blue-500" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete();
+              }}
+              className="p-1 h-auto opacity-0 group-hover:opacity-100 hover:bg-red-100"
+            >
+              <Trash2 className="h-3 w-3 text-red-500" />
             </Button>
           </div>
         </div>
-
-        <div className="flex gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="p-1 h-auto opacity-0 group-hover:opacity-100 hover:bg-blue-100 flex-shrink-0"
-          >
-            <Edit className="h-3 w-3 text-blue-500" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleDelete}
-            className="p-1 h-auto opacity-0 group-hover:opacity-100 hover:bg-red-100 flex-shrink-0"
-          >
-            <Trash2 className="h-3 w-3 text-red-500" />
-          </Button>
-        </div>
       </div>
-    </div>
+
+      <TaskModal
+        task={task}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
+    </>
   );
 }
