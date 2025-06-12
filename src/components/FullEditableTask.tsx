@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Task } from '../services/StorageService';
 import { useApp } from '../contexts/AppContext';
@@ -13,7 +12,7 @@ import { Trash2, Calendar, Clock, Repeat, Edit } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { RecurrenceSettings } from './RecurrenceSettings';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
 interface FullEditableTaskProps {
@@ -35,6 +34,50 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+
+  // Helper function to safely format dates
+  const formatDeadlineDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString + 'T12:00:00');
+      if (isValid(date)) {
+        return format(date, 'd MMM yyyy', { locale: ru });
+      }
+      return 'Invalid date';
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Invalid date';
+    }
+  };
+
+  // Helper function to get initial calendar month safely
+  const getInitialCalendarMonth = () => {
+    if (task.deadline) {
+      try {
+        const date = new Date(task.deadline + 'T12:00:00');
+        if (isValid(date)) {
+          return date;
+        }
+      } catch (error) {
+        console.error('Error parsing deadline for calendar:', error);
+      }
+    }
+    return new Date();
+  };
+
+  // Helper function to get selected date for calendar safely
+  const getSelectedDate = () => {
+    if (task.deadline) {
+      try {
+        const date = new Date(task.deadline + 'T12:00:00');
+        if (isValid(date)) {
+          return date;
+        }
+      } catch (error) {
+        console.error('Error parsing deadline for selection:', error);
+      }
+    }
+    return undefined;
+  };
 
   // Handle keyboard shortcuts for task deletion
   useEffect(() => {
@@ -297,14 +340,6 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
     });
   };
 
-  // Get initial focus date for calendar
-  const getInitialCalendarMonth = () => {
-    if (task.deadline) {
-      return new Date(task.deadline + 'T12:00:00');
-    }
-    return new Date();
-  };
-
   return (
     <>
       <div
@@ -401,7 +436,7 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
                     >
                       <Calendar className="h-3 w-3 mr-1" />
                       {task.deadline 
-                        ? format(new Date(task.deadline + 'T12:00:00'), 'd MMM yyyy', { locale: ru })
+                        ? formatDeadlineDate(task.deadline)
                         : 'Дата'
                       }
                     </Button>
@@ -417,7 +452,7 @@ export function FullEditableTask({ task, onDragStart }: FullEditableTaskProps) {
                       />
                       <CalendarComponent
                         mode="single"
-                        selected={task.deadline ? new Date(task.deadline + 'T12:00:00') : undefined}
+                        selected={getSelectedDate()}
                         onSelect={handleDateSelect}
                         defaultMonth={getInitialCalendarMonth()}
                         initialFocus
