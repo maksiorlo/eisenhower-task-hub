@@ -246,8 +246,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     selectProject: async (project) => {
       dispatch({ type: 'SELECT_PROJECT', payload: project });
-      const tasks = await storageService.getTasksByProject(project.id);
-      dispatch({ type: 'SET_TASKS', payload: tasks });
+      try {
+        const tasks = await storageService.getTasksByProject(project.id);
+        dispatch({ type: 'SET_TASKS', payload: tasks });
+      } catch (error) {
+        console.error('Failed to load project tasks:', error);
+      }
     },
 
     loadData,

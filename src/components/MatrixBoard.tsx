@@ -8,6 +8,7 @@ import { TaskContextMenu } from './TaskContextMenu';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { isValid } from 'date-fns';
 
 export function MatrixBoard() {
   const { state, actions } = useApp();
@@ -43,7 +44,15 @@ export function MatrixBoard() {
       
       // Sort by deadline (closest first), then by creation date
       if (a.deadline && b.deadline) {
-        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+        try {
+          const dateA = new Date(a.deadline + 'T12:00:00');
+          const dateB = new Date(b.deadline + 'T12:00:00');
+          if (isValid(dateA) && isValid(dateB)) {
+            return dateA.getTime() - dateB.getTime();
+          }
+        } catch (error) {
+          console.error('Error comparing dates:', error);
+        }
       }
       if (a.deadline && !b.deadline) return -1;
       if (!a.deadline && b.deadline) return 1;

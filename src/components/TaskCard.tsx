@@ -5,8 +5,22 @@ import { useApp } from '../contexts/AppContext';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Trash2 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { ru } from 'date-fns/locale';
+
+// Helper function to safely format dates
+const formatDeadlineDate = (dateString: string) => {
+  try {
+    const date = new Date(dateString + 'T12:00:00');
+    if (isValid(date)) {
+      return format(date, 'd MMM yyyy', { locale: ru });
+    }
+    return 'Invalid date';
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return 'Invalid date';
+  }
+};
 
 interface TaskCardProps {
   task: Task;
@@ -64,7 +78,7 @@ export function TaskCard({ task, onEdit, onDragStart }: TaskCardProps) {
           
           {task.deadline && (
             <p className={`text-xs mt-2 ${deadlineClass} ${task.completed ? 'line-through' : ''}`}>
-              до {format(new Date(task.deadline), 'd MMM yyyy', { locale: ru })}
+              до {formatDeadlineDate(task.deadline)}
             </p>
           )}
         </div>

@@ -8,8 +8,22 @@ import { TimeInput } from './TimeInput';
 import { Calendar, Clock } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { ru } from 'date-fns/locale';
+
+// Helper function to safely format dates
+const formatDeadlineDate = (dateString: string) => {
+  try {
+    const date = new Date(dateString + 'T12:00:00');
+    if (isValid(date)) {
+      return format(date, 'd MMM yyyy', { locale: ru });
+    }
+    return 'Дата';
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return 'Дата';
+  }
+};
 
 interface EnhancedTaskInputProps {
   quadrant: Task['quadrant'];
@@ -128,7 +142,7 @@ export function EnhancedTaskInput({ quadrant, onCancel }: EnhancedTaskInputProps
             >
               <Calendar className="h-3 w-3 mr-1" />
               {deadline 
-                ? format(new Date(deadline), 'd MMM yyyy', { locale: ru })
+                ? formatDeadlineDate(deadline)
                 : 'Дата'
               }
             </Button>
@@ -136,7 +150,14 @@ export function EnhancedTaskInput({ quadrant, onCancel }: EnhancedTaskInputProps
           <PopoverContent className="w-auto p-0" align="start">
             <CalendarComponent
               mode="single"
-              selected={deadline ? new Date(deadline) : undefined}
+              selected={deadline ? (() => {
+                try {
+                  const date = new Date(deadline + 'T12:00:00');
+                  return isValid(date) ? date : undefined;
+                } catch {
+                  return undefined;
+                }
+              })() : undefined}
               onSelect={handleDateSelect}
               initialFocus
               className="p-3"

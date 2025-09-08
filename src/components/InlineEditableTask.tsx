@@ -13,8 +13,22 @@ import { Trash2, Calendar, Clock, Repeat, Edit } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { RecurrenceSettings } from './RecurrenceSettings';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { ru } from 'date-fns/locale';
+
+// Helper function to safely format dates
+const formatDeadlineDate = (dateString: string) => {
+  try {
+    const date = new Date(dateString + 'T12:00:00');
+    if (isValid(date)) {
+      return format(date, 'd MMM yyyy', { locale: ru });
+    }
+    return 'Дата';
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return 'Дата';
+  }
+};
 
 interface InlineEditableTaskProps {
   task: Task;
@@ -278,7 +292,7 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
                   >
                     <Calendar className="h-3 w-3 mr-1" />
                     {task.deadline 
-                      ? format(new Date(task.deadline), 'd MMM yyyy', { locale: ru })
+                      ? formatDeadlineDate(task.deadline)
                       : 'Дата'
                     }
                   </Button>
@@ -286,7 +300,14 @@ export function InlineEditableTask({ task, onDragStart }: InlineEditableTaskProp
                 <PopoverContent className="w-auto p-0" align="start">
                   <CalendarComponent
                     mode="single"
-                    selected={task.deadline ? new Date(task.deadline) : undefined}
+                    selected={task.deadline ? (() => {
+                      try {
+                        const date = new Date(task.deadline + 'T12:00:00');
+                        return isValid(date) ? date : undefined;
+                      } catch {
+                        return undefined;
+                      }
+                    })() : undefined}
                     onSelect={handleDateSelect}
                     initialFocus
                     className="p-3 pointer-events-auto"
